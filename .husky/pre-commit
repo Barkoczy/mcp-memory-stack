@@ -1,5 +1,4 @@
 #!/usr/bin/env sh
-. "$(dirname -- "$0")/_/husky.sh"
 
 echo "🔍 Running pre-commit checks..."
 
@@ -13,14 +12,28 @@ if [ $? -ne 0 ]; then
   exit 1
 fi
 
-# Check for secrets in staged files
+# Enhanced secrets detection
 echo "🔒 Checking for potential secrets..."
-git diff --cached --name-only | xargs grep -l -i -E "(password|secret|key|token|api_key)" 2>/dev/null && {
+
+# Basic pattern matching for immediate detection
+git diff --cached --name-only | xargs grep -l -i -E "(password|secret|key|token|api_key|private_key|credential)" 2>/dev/null && {
   echo "⚠️  Warning: Potential secrets detected in staged files!"
   echo "Please review and remove any sensitive information before committing."
   echo "If these are legitimate file contents, you can bypass this check with --no-verify"
   exit 1
 } || true
+
+# Additional security patterns
+staged_files=$(git diff --cached --name-only --diff-filter=AM 2>/dev/null || true)
+if [ -n "$staged_files" ]; then
+  # Check for common secret patterns
+  secret_patterns="(BEGIN RSA PRIVATE KEY|BEGIN PRIVATE KEY|-----BEGIN|aws_access_key_id|aws_secret_access_key|GITHUB_TOKEN|SLACK_TOKEN)"
+  echo "$staged_files" | xargs grep -l -E "$secret_patterns" 2>/dev/null && {
+    echo "🚨 Critical: High-confidence secrets detected!"
+    echo "These patterns indicate actual secrets. Please remove them immediately."
+    exit 1
+  } || true
+fi
 
 # Check for TODO/FIXME comments in staged files
 echo "📋 Checking for TODO/FIXME comments..."

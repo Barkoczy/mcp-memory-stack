@@ -26,6 +26,9 @@ export default [
         setInterval: 'readonly',
         clearTimeout: 'readonly',
         clearInterval: 'readonly',
+        module: 'readonly',
+        exports: 'readonly',
+        require: 'readonly',
         // Jest globals for test files
         describe: 'readonly',
         it: 'readonly',
@@ -35,15 +38,15 @@ export default [
         afterEach: 'readonly',
         beforeAll: 'readonly',
         afterAll: 'readonly',
-        jest: 'readonly'
-      }
+        jest: 'readonly',
+      },
     },
-    
+
     plugins: {
       node: nodePlugin,
       import: importPlugin,
       promise: promisePlugin,
-      security: securityPlugin
+      security: securityPlugin,
     },
 
     rules: {
@@ -54,26 +57,32 @@ export default [
       'prefer-template': 'error',
       'template-curly-spacing': ['error', 'never'],
       'object-shorthand': 'error',
-      'prefer-destructuring': ['error', {
-        'array': false,
-        'object': true
-      }],
+      'prefer-destructuring': [
+        'error',
+        {
+          array: false,
+          object: true,
+        },
+      ],
 
       // Error prevention
       'no-console': 'off', // Allow console for logging
       'no-debugger': 'error',
       'no-alert': 'error',
-      'no-unused-vars': ['warn', { 
-        'argsIgnorePattern': '^_',
-        'varsIgnorePattern': '^_' 
-      }],
+      'no-unused-vars': [
+        'warn',
+        {
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+        },
+      ],
       'no-case-declarations': 'error',
       'no-unused-expressions': 'error',
       'no-unreachable': 'error',
       'no-duplicate-imports': 'error',
 
       // Code quality (relaxed for this project)
-      'complexity': ['warn', 15],
+      complexity: ['warn', 15],
       'max-depth': ['warn', 5],
       'max-lines': ['warn', 600],
       'max-lines-per-function': ['warn', 150],
@@ -89,17 +98,13 @@ export default [
       // Import rules
       'import/no-unresolved': 'error',
       'import/no-duplicates': 'error',
-      'import/order': ['error', {
-        'groups': [
-          'builtin',
-          'external',
-          'internal',
-          'parent',
-          'sibling',
-          'index'
-        ],
-        'newlines-between': 'never'
-      }],
+      'import/order': [
+        'error',
+        {
+          groups: ['builtin', 'external', 'internal', 'parent', 'sibling', 'index'],
+          'newlines-between': 'never',
+        },
+      ],
       'import/newline-after-import': 'error',
       'import/no-default-export': 'off',
 
@@ -134,8 +139,8 @@ export default [
       'node/prefer-global/buffer': 'error',
       'node/prefer-global/console': 'error',
       'node/prefer-global/url': 'error',
-      'node/prefer-promises/fs': 'error'
-    }
+      'node/prefer-promises/fs': 'error',
+    },
   },
 
   // Specific configuration for source files
@@ -144,7 +149,7 @@ export default [
     rules: {
       'no-console': 'off', // Allow console in logger utility
       'max-lines': ['warn', 600], // Larger files allowed in services
-    }
+    },
   },
 
   // Specific configuration for test files
@@ -155,10 +160,10 @@ export default [
       'max-lines': 'off',
       'max-lines-per-function': 'off',
       'max-statements': 'off',
-      'complexity': 'off',
+      complexity: 'off',
       'security/detect-object-injection': 'off',
-      'security/detect-non-literal-regexp': 'off'
-    }
+      'security/detect-non-literal-regexp': 'off',
+    },
   },
 
   // Configuration files
@@ -166,8 +171,8 @@ export default [
     files: ['*.config.js', 'config/**/*.js'],
     rules: {
       'no-console': 'off',
-      'security/detect-non-literal-require': 'off'
-    }
+      'security/detect-non-literal-require': 'off',
+    },
   },
 
   // Scripts directory
@@ -176,8 +181,8 @@ export default [
     rules: {
       'no-console': 'off',
       'node/no-process-exit': 'off',
-      'security/detect-child-process': 'off'
-    }
+      'security/detect-child-process': 'off',
+    },
   },
 
   // Prettier integration (must be last)
@@ -196,7 +201,7 @@ export default [
       'prometheus/data/**',
       'postgres-data/**',
       'redis-data/**',
-      '*.min.js'
-    ]
-  }
+      '*.min.js',
+    ],
+  },
 ];

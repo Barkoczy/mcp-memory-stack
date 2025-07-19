@@ -1,27 +1,15 @@
 #!/usr/bin/env sh
-. "$(dirname -- "$0")/_/husky.sh"
 
-# Validate commit message format
-# Format: type(scope): description
-# Examples: feat(auth): add JWT authentication
-#           fix(api): handle null responses
-#           docs(readme): update installation guide
+echo "🔍 Validating commit message with commitlint..."
 
-commit_regex='^(feat|fix|docs|style|refactor|test|chore|perf|ci|build)(\(.+\))?: .{1,50}'
+# Use commitlint for proper conventional commit validation
+npx --no -- commitlint --edit "$1"
 
-if ! grep -qE "$commit_regex" "$1"; then
-    echo "❌ Invalid commit message format!"
+if [ $? -eq 0 ]; then
+    echo "✅ Commit message format is valid"
+else
     echo ""
-    echo "Format: type(scope): description"
-    echo ""
-    echo "Types: feat, fix, docs, style, refactor, test, chore, perf, ci, build"
-    echo ""
-    echo "Examples:"
-    echo "  feat(auth): add JWT authentication"
-    echo "  fix(api): handle null responses"
-    echo "  docs(readme): update installation guide"
-    echo ""
+    echo "💡 See commitlint.config.js for allowed types and scopes"
+    echo "📖 Learn more: https://conventionalcommits.org/"
     exit 1
 fi
-
-echo "✅ Commit message format is valid"
