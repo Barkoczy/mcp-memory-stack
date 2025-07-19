@@ -1,0 +1,60 @@
+apiVersion: 1
+
+datasources:
+  # Prometheus - Primary metrics source
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    orgId: 1
+    url: http://prometheus:9090
+    isDefault: true
+    version: 1
+    editable: true
+    jsonData:
+      httpMethod: POST
+      exemplarTraceIdDestinations:
+        - name: trace_id
+          datasourceUid: loki
+      timeInterval: "15s"
+      queryTimeout: "60s"
+      defaultRegion: local
+      customQueryParameters: ""
+      manageAlerts: true
+      prometheusType: Prometheus
+      prometheusVersion: "2.48.1"
+      cacheLevel: Medium
+      disableMetricsLookup: false
+      incrementalQuerying: true
+      disableRecordingRules: false
+    uid: prometheus
+
+  # Loki - Log aggregation
+  - name: Loki
+    type: loki
+    access: proxy
+    orgId: 1
+    url: http://loki:3100
+    isDefault: false
+    version: 1
+    editable: true
+    jsonData:
+      maxLines: 1000
+      derivedFields:
+        - matcherRegex: "trace_id=(\\w+)"
+          name: TraceID
+          url: "$${__value.raw}"
+          datasourceUid: tempo
+        - matcherRegex: "correlation_id=(\\w+)"
+          name: CorrelationID
+          url: "$${__value.raw}"
+    uid: loki
+
+  # TestData DB for development and testing
+  - name: TestData
+    type: testdata
+    access: proxy
+    orgId: 1
+    isDefault: false
+    version: 1
+    editable: true
+    uid: testdata

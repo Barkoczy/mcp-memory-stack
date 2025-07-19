@@ -1,0 +1,103 @@
+# Prometheus Configuration for MCP Memory Server - 2025 Standards
+# Follows OpenTelemetry conventions and modern monitoring practices
+
+global:
+  scrape_interval: 15s # Default scrape interval
+  evaluation_interval: 15s # Rule evaluation interval
+  external_labels:
+    cluster: 'mcp-memory-dev'
+    environment: 'development'
+    region: 'local'
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+          # - alertmanager:9093 # Uncomment when alertmanager is enabled
+
+# Load rules once and periodically evaluate them
+rule_files:
+  - "rules/*.yml"
+
+# Scrape configurations
+scrape_configs:
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+    scrape_interval: 15s
+    metrics_path: /metrics
+    scheme: http
+
+  # MCP Memory Server Application Metrics
+  - job_name: 'mcp-memory-server'
+    static_configs:
+      - targets: ['mcp-memory-dev:3334']
+    scrape_interval: 10s
+    metrics_path: /metrics
+    scheme: http
+    scrape_timeout: 10s
+    honor_labels: true
+    params:
+      format: ['prometheus']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: mcp-memory-dev:3334
+      - target_label: service
+        replacement: mcp-memory-server
+      - target_label: component
+        replacement: application
+
+  # MCP Memory Server Health Check
+  - job_name: 'mcp-health'
+    static_configs:
+      - targets: ['mcp-memory-dev:3334']
+    scrape_interval: 5s
+    metrics_path: /health/metrics
+    scheme: http
+    scrape_timeout: 5s
+
+  # Node Exporter - System Metrics
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+    scrape_interval: 15s
+    metrics_path: /metrics
+    scheme: http
+    relabel_configs:
+      - target_label: service
+        replacement: system
+      - target_label: component
+        replacement: node-exporter
+
+  # cAdvisor - Container Metrics
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['cadvisor:8080']
+    scrape_interval: 15s
+    metrics_path: /metrics
+    scheme: http
+    relabel_configs:
+      - target_label: service
+        replacement: containers
+      - target_label: component
+        replacement: cadvisor
+      # Rename container labels for better readability
+      - source_labels: [container_label_com_docker_compose_service]
+        target_label: docker_service
+      - source_labels: [container_label_com_docker_compose_project]
+        target_label: docker_project
+# Storage configuration is handled via command line arguments in docker-compose
+# --storage.tsdb.retention.time=30d
+# --storage.tsdb.retention.size=10GB
+# Remote write configuration (for long-term storage)
+# remote_write:
+#   - url: "https://your-remote-storage/api/v1/write"
+#     basic_auth:
+#       username: "your-username"
+#       password: "your-password"

@@ -1,0 +1,293 @@
+# MCP Memory Server Alerting Rules - 2025 Standards
+# Following SRE best practices and OpenTelemetry conventions
+
+groups:
+  # Application Health and Availability Alerts
+  - name: mcp-memory-health
+    interval: 30s
+    rules:
+      - alert: MCPMemoryServerDown
+        expr: up{job="mcp-memory-server"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: mcp-memory-server
+          component: application
+          runbook: "https://docs.mcp-memory.local/runbooks/server-down"
+        annotations:
+          summary: "MCP Memory Server is down"
+          description: "MCP Memory Server has been down for more than 1 minute. Service: {{ $labels.instance }}"
+          impact: "Complete service unavailability"
+          action: "Check server logs and container status"
+
+      - alert: MCPMemoryHighErrorRate
+        expr: |
+          (
+            rate(mcp_http_requests_total{status_code=~"5.."}[5m]) /
+            rate(mcp_http_requests_total[5m])
+          ) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+          service: mcp-memory-server
+          component: http
+          slo: availability
+        annotations:
+          summary: "High error rate in MCP Memory Server"
+          description: "Error rate is {{ $value | humanizePercentage }} for instance {{ $labels.instance }}"
+          impact: "Degraded user experience"
+          action: "Check application logs for error patterns"
+
+      - alert: MCPMemoryHighLatency
+        expr: |
+          histogram_quantile(0.95, 
+            rate(mcp_http_request_duration_seconds_bucket[5m])
+          ) > 1.0
+        for: 5m
+        labels:
+          severity: warning
+          service: mcp-memory-server
+          component: http
+          slo: latency
+        annotations:
+          summary: "High latency in MCP Memory Server"
+          description: "95th percentile latency is {{ $value }}s for instance {{ $labels.instance }}"
+          impact: "Slow response times affecting user experience"
+          action: "Check for performance bottlenecks in database or embedding generation"
+
+  # Resource Utilization Alerts
+  - name: mcp-memory-resources
+    interval: 30s
+    rules:
+      - alert: MCPMemoryHighCPUUsage
+        expr: |
+          rate(mcp_memory_server_process_cpu_seconds_total[5m]) * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+          service: mcp-memory-server
+          component: system
+          resource: cpu
+        annotations:
+          summary: "High CPU usage in MCP Memory Server"
+          description: "CPU usage is {{ $value }}% for instance {{ $labels.instance }}"
+          impact: "Potential performance degradation"
+          action: "Check for CPU-intensive operations or consider scaling"
+
+      - alert: MCPMemoryHighMemoryUsage
+        expr: |
+          (
+            mcp_memory_server_nodejs_heap_size_used_bytes /
+            mcp_memory_server_nodejs_heap_size_total_bytes
+          ) > 0.85
+        for: 3m
+        labels:
+          severity: warning
+          service: mcp-memory-server
+          component: nodejs
+          resource: memory
+        annotations:
+          summary: "High memory usage in MCP Memory Server"
+          description: "Memory usage is {{ $value | humanizePercentage }} for instance {{ $labels.instance }}"
+          impact: "Risk of out-of-memory errors"
+          action: "Check for memory leaks or consider increasing memory limits"
+
+      - alert: MCPMemoryEventLoopLag
+        expr: mcp_event_loop_lag_milliseconds > 100
+        for: 2m
+        labels:
+          severity: warning
+          service: mcp-memory-server
+          component: nodejs
+          resource: eventloop
+        annotations:
+          summary: "High Event Loop Lag in MCP Memory Server"
+          description: "Event loop lag is {{ $value }}ms for instance {{ $labels.instance }}"
+          impact: "Degraded application responsiveness"
+          action: "Check for blocking operations in the event loop"
+
+  # Database and Storage Alerts
+  - name: mcp-memory-database
+    interval: 30s
+    rules:
+      - alert: MCPMemoryDatabaseConnections
+        expr: mcp_db_connections_active{status="active"} > 40
+        for: 2m
+        labels:
+          severity: warning
+          service: mcp-memory-server
+          component: database
+          resource: connections
+        annotations:
+          summary: "High database connection usage"
+          description: "Active database connections: {{ $value }} for pool {{ $labels.pool }}"
+          impact: "Risk of connection pool exhaustion"
+          action: "Check for connection leaks or increase pool size"
+
+      - alert: MCPMemorySlowDatabaseQueries
+        expr: |
+          histogram_quantile(0.95, 
+            rate(mcp_db_query_duration_seconds_bucket[5m])
+          ) > 0.5
+        for: 3m
+        labels:
+          severity: warning
+          service: mcp-memory-server
+          component: database
+          slo: latency
+        annotations:
+          summary: "Slow database queries detected"
+          description: "95th percentile query time is {{ $value }}s for {{ $labels.operation }}"
+          impact: "Slow application response times"
+          action: "Check query performance and database health"
+
+      - alert: MCPMemoryDatabaseErrors
+        expr: |
+          rate(mcp_db_queries_total{status="failure"}[5m]) > 0.1
+        for: 2m
+        labels:
+          severity: critical
+          service: mcp-memory-server
+          component: database
+        annotations:
+          summary: "Database errors detected"
+          description: "Database error rate: {{ $value }} errors/sec for {{ $labels.operation }}"
+          impact: "Data operations failing"
+          action: "Check database logs and connectivity"
+
+  # Business Logic Alerts
+  - name: mcp-memory-business
+    interval: 30s
+    rules:
+      - alert: MCPMemoryEmbeddingErrors
+        expr: |
+          rate(mcp_embedding_operations_total{status="failure"}[5m]) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+          service: mcp-memory-server
+          component: embedding
+        annotations:
+          summary: "High embedding generation failure rate"
+          description: "Embedding error rate: {{ $value }} errors/sec for model {{ $labels.model }}"
+          impact: "Memory operations may fail"
+          action: "Check embedding service health and model availability"
+
+      - alert: MCPMemorySearchPerformance
+        expr: |
+          histogram_quantile(0.95, 
+            rate(mcp_search_duration_seconds_bucket[5m])
+          ) > 2.0
+        for: 3m
+        labels:
+          severity: warning
+          service: mcp-memory-server
+          component: search
+          slo: latency
+        annotations:
+          summary: "Slow search operations"
+          description: "95th percentile search time is {{ $value }}s for {{ $labels.type }}"
+          impact: "Slow memory retrieval affecting user experience"
+          action: "Check vector database performance and indexing"
+
+      - alert: MCPMemoryLowSearchResults
+        expr: |
+          histogram_quantile(0.95, 
+            rate(mcp_search_results_count_bucket[5m])
+          ) == 0
+        for: 5m
+        labels:
+          severity: info
+          service: mcp-memory-server
+          component: search
+        annotations:
+          summary: "Search operations returning no results"
+          description: "Search operations consistently returning no results for {{ $labels.type }}"
+          impact: "Users may not find relevant memories"
+          action: "Check search thresholds and data availability"
+
+  # Security and Authentication Alerts
+  - name: mcp-memory-security
+    interval: 30s
+    rules:
+      - alert: MCPMemoryHighAuthFailures
+        expr: |
+          rate(mcp_auth_attempts_total{status="failure"}[5m]) > 5
+        for: 1m
+        labels:
+          severity: warning
+          service: mcp-memory-server
+          component: security
+          type: authentication
+        annotations:
+          summary: "High authentication failure rate"
+          description: "Authentication failure rate: {{ $value }} failures/sec for method {{ $labels.method }}"
+          impact: "Potential security threat or service issue"
+          action: "Check for brute force attacks or authentication service issues"
+
+      - alert: MCPMemoryRateLimitHits
+        expr: |
+          rate(mcp_rate_limit_hits_total[5m]) > 10
+        for: 2m
+        labels:
+          severity: info
+          service: mcp-memory-server
+          component: security
+          type: rate_limiting
+        annotations:
+          summary: "High rate limit hits"
+          description: "Rate limit hits: {{ $value }} hits/sec for {{ $labels.endpoint }}"
+          impact: "Users may be hitting service limits"
+          action: "Consider adjusting rate limits or investigating usage patterns"
+
+      - alert: MCPMemorySecurityEvents
+        expr: |
+          rate(mcp_security_events_total{severity=~"critical|high"}[5m]) > 0
+        for: 0s
+        labels:
+          severity: critical
+          service: mcp-memory-server
+          component: security
+        annotations:
+          summary: "Critical security event detected"
+          description: "Security event: {{ $labels.event_type }} from {{ $labels.source }}"
+          impact: "Potential security breach"
+          action: "Immediate investigation required"
+
+  # Infrastructure Alerts
+  - name: mcp-memory-infrastructure
+    interval: 30s
+    rules:
+      - alert: MCPMemoryContainerRestarts
+        expr: |
+          increase(container_last_seen{name=~"mcp-.*"}[5m]) > 0
+        for: 0s
+        labels:
+          severity: warning
+          service: mcp-memory-server
+          component: infrastructure
+        annotations:
+          summary: "Container restart detected"
+          description: "Container {{ $labels.name }} has restarted"
+          impact: "Service interruption"
+          action: "Check container logs for restart reason"
+
+      - alert: MCPMemoryDiskSpaceHigh
+        expr: |
+          (
+            1 - (
+              node_filesystem_avail_bytes{mountpoint="/"} / 
+              node_filesystem_size_bytes{mountpoint="/"}
+            )
+          ) > 0.85
+        for: 5m
+        labels:
+          severity: warning
+          service: mcp-memory-server
+          component: infrastructure
+          resource: disk
+        annotations:
+          summary: "High disk usage"
+          description: "Disk usage is {{ $value | humanizePercentage }} on {{ $labels.instance }}"
+          impact: "Risk of disk space exhaustion"
+          action: "Clean up logs or increase disk space"
