@@ -1,0 +1,105 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # Generate changelog from git commits
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^)
+          CURRENT_TAG=${GITHUB_REF#refs/tags/}
+          
+          echo "## What's Changed" > CHANGELOG.md
+          echo "" >> CHANGELOG.md
+          
+          # Get commits between tags
+          git log --pretty=format:"- %s (%h)" $PREVIOUS_TAG..$CURRENT_TAG >> CHANGELOG.md
+          
+          echo "## Full Changelog" >> CHANGELOG.md
+          echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/$PREVIOUS_TAG...$CURRENT_TAG" >> CHANGELOG.md
+          
+          # Set output for release body
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          cat CHANGELOG.md >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          body: ${{ steps.changelog.outputs.changelog }}
+          draft: false
+          prerelease: false
+
+      - name: Build release artifacts
+        run: |
+          # Create release bundle
+          mkdir -p release-artifacts
+          
+          # Copy important files
+          cp README.md release-artifacts/
+          cp LICENSE release-artifacts/
+          cp CONTRIBUTING.md release-artifacts/
+          cp package.json release-artifacts/
+          cp docker-compose.yml release-artifacts/
+          cp docker-compose.prod.yml release-artifacts/
+          
+          # Copy source code
+          cp -r src release-artifacts/
+          cp -r docs release-artifacts/
+          cp -r scripts release-artifacts/
+          cp -r secrets release-artifacts/
+          
+          # Create archives
+          tar -czf mcp-memory-stack-${GITHUB_REF#refs/tags/}.tar.gz -C release-artifacts .
+          zip -r mcp-memory-stack-${GITHUB_REF#refs/tags/}.zip release-artifacts/
+
+      - name: Upload release assets
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./mcp-memory-stack-${{ github.ref_name }}.tar.gz
+          asset_name: mcp-memory-stack-${{ github.ref_name }}.tar.gz
+          asset_content_type: application/gzip
+
+      - name: Upload release assets (zip)
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./mcp-memory-stack-${{ github.ref_name }}.zip
+          asset_name: mcp-memory-stack-${{ github.ref_name }}.zip
+          asset_content_type: application/zip

@@ -1,0 +1,315 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  release:
+    types: [published]
+
+env:
+  NODE_VERSION: '20'
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  test:
+    name: Test Suite
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16-v0.7.4
+        env:
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_USER: mcp_user
+          POSTGRES_DB: mcp_memory_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Create test database schema
+        run: |
+          PGPASSWORD=test_password psql -h localhost -U mcp_user -d mcp_memory_test -c "
+          CREATE EXTENSION IF NOT EXISTS vector;
+          CREATE EXTENSION IF NOT EXISTS uuid-ossp;
+          
+          CREATE TABLE IF NOT EXISTS memories (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            type VARCHAR(255) NOT NULL,
+            content JSONB NOT NULL,
+            source VARCHAR(255),
+            embedding vector(384),
+            tags VARCHAR(255)[] DEFAULT '{}',
+            confidence DOUBLE PRECISION DEFAULT 0.5,
+            created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+          );
+          
+          CREATE INDEX IF NOT EXISTS idx_memories_embedding 
+          ON memories USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
+          
+          CREATE INDEX IF NOT EXISTS idx_memories_type ON memories(type);
+          CREATE INDEX IF NOT EXISTS idx_memories_tags ON memories USING GIN(tags);
+          CREATE INDEX IF NOT EXISTS idx_memories_created_at ON memories(created_at);
+          "
+
+      - name: Run linting
+        run: npm run lint
+
+      - name: Run unit tests
+        run: npm run test:unit
+        env:
+          DATABASE_URL: postgresql://mcp_user:test_password@localhost:5432/mcp_memory_test
+
+      - name: Run integration tests
+        run: npm run test:integration
+        env:
+          DATABASE_URL: postgresql://mcp_user:test_password@localhost:5432/mcp_memory_test
+
+      - name: Run E2E tests
+        run: npm run test:e2e
+        env:
+          DATABASE_URL: postgresql://mcp_user:test_password@localhost:5432/mcp_memory_test
+
+      - name: Generate coverage report
+        run: npm run test:coverage
+        env:
+          DATABASE_URL: postgresql://mcp_user:test_password@localhost:5432/mcp_memory_test
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage/lcov.info
+          fail_ci_if_error: false
+
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run security audit
+        run: npm audit --audit-level moderate
+
+      - name: Run Snyk security scan
+        uses: snyk/actions/node@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --severity-threshold=high
+
+      - name: Build Docker image for scanning
+        run: docker build -t ${{ env.IMAGE_NAME }}:scan .
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.IMAGE_NAME }}:scan
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy scan results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+  build:
+    name: Build and Test Docker Image
+    runs-on: ubuntu-latest
+    needs: [test, security]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: false
+          tags: ${{ env.IMAGE_NAME }}:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Test Docker image
+        run: |
+          # Start test environment
+          docker network create test-network
+          
+          # Start test database
+          docker run -d --name test-postgres --network test-network \
+            -e POSTGRES_PASSWORD=test_password \
+            -e POSTGRES_USER=mcp_user \
+            -e POSTGRES_DB=mcp_memory_test \
+            pgvector/pgvector:pg16-v0.7.4
+          
+          # Wait for database
+          sleep 10
+          
+          # Start application
+          docker run -d --name test-app --network test-network \
+            -e NODE_ENV=test \
+            -e DATABASE_URL=postgresql://mcp_user:test_password@test-postgres:5432/mcp_memory_test \
+            -p 3333:3333 -p 3334:3334 \
+            ${{ env.IMAGE_NAME }}:test
+          
+          # Wait for application
+          sleep 15
+          
+          # Test health endpoint
+          curl -f http://localhost:3334/health
+          
+          # Test API endpoint
+          curl -f -X POST http://localhost:3333/api/v1/memories \
+            -H "Content-Type: application/json" \
+            -d '{"type":"test","content":{"message":"docker test"},"source":"ci"}'
+          
+          # Cleanup
+          docker stop test-app test-postgres
+          docker rm test-app test-postgres
+          docker network rm test-network
+
+  publish:
+    name: Publish Docker Image
+    runs-on: ubuntu-latest
+    needs: [build]
+    if: github.event_name == 'release'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}
+          format: spdx-json
+          output-file: sbom.spdx.json
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom.spdx.json
+
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: [publish]
+    if: github.ref == 'refs/heads/develop'
+    environment: staging
+    
+    steps:
+      - name: Deploy to staging
+        run: |
+          echo "Deploying to staging environment..."
+          # Add your staging deployment commands here
+          # This could include:
+          # - Updating Kubernetes manifests
+          # - Deploying to cloud platforms
+          # - Running deployment scripts
+
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [publish]
+    if: github.event_name == 'release'
+    environment: production
+    
+    steps:
+      - name: Deploy to production
+        run: |
+          echo "Deploying to production environment..."
+          # Add your production deployment commands here
+          # This could include:
+          # - Updating Kubernetes manifests
+          # - Deploying to cloud platforms
+          # - Running deployment scripts
+          # - Database migrations
+          # - Health checks
+
+  notify:
+    name: Notify Team
+    runs-on: ubuntu-latest
+    needs: [deploy-production]
+    if: always()
+    
+    steps:
+      - name: Notify on success
+        if: needs.deploy-production.result == 'success'
+        run: |
+          echo "🚀 Production deployment successful!"
+          # Add notification logic (Slack, Discord, email, etc.)
+
+      - name: Notify on failure
+        if: needs.deploy-production.result == 'failure'
+        run: |
+          echo "❌ Production deployment failed!"
+          # Add notification logic (Slack, Discord, email, etc.)

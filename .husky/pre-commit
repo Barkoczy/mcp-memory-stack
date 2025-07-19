@@ -1,0 +1,36 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+echo "🔍 Running pre-commit checks..."
+
+# Run lint-staged for staged files
+echo "📝 Checking code style and formatting..."
+npx lint-staged
+
+# Check if there are any linting errors
+if [ $? -ne 0 ]; then
+  echo "❌ Linting failed. Please fix the issues and try again."
+  exit 1
+fi
+
+# Check for secrets in staged files
+echo "🔒 Checking for potential secrets..."
+git diff --cached --name-only | xargs grep -l -i -E "(password|secret|key|token|api_key)" 2>/dev/null && {
+  echo "⚠️  Warning: Potential secrets detected in staged files!"
+  echo "Please review and remove any sensitive information before committing."
+  echo "If these are legitimate file contents, you can bypass this check with --no-verify"
+  exit 1
+} || true
+
+# Check for TODO/FIXME comments in staged files
+echo "📋 Checking for TODO/FIXME comments..."
+staged_files=$(git diff --cached --name-only --diff-filter=AM | grep -E '\.(js|ts|jsx|tsx)$' || true)
+if [ -n "$staged_files" ]; then
+  todo_count=$(echo "$staged_files" | xargs grep -c -i -E "(TODO|FIXME|XXX|HACK)" 2>/dev/null | awk -F: '{sum += $2} END {print sum+0}')
+  if [ "$todo_count" -gt 0 ]; then
+    echo "📝 Found $todo_count TODO/FIXME comments in staged files"
+    echo "Consider addressing these before committing to production"
+  fi
+fi
+
+echo "✅ Pre-commit checks passed!"

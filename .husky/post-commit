@@ -1,0 +1,70 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+echo "📝 Post-commit actions..."
+
+# Get commit info
+commit_hash=$(git rev-parse HEAD)
+commit_message=$(git log -1 --pretty=%B)
+files_changed=$(git diff-tree --no-commit-id --name-only -r HEAD | wc -l)
+
+echo "✅ Commit successful!"
+echo "📊 Hash: $commit_hash"
+echo "📁 Files changed: $files_changed"
+
+# Check if this is a major change (many files)
+if [ "$files_changed" -gt 10 ]; then
+  echo "🔍 Large commit detected ($files_changed files)"
+  echo "💡 Consider running integration tests: npm run test:integration"
+fi
+
+# Suggest actions based on commit type
+case "$commit_message" in
+  feat*)
+    echo "🎉 New feature added!"
+    echo "💡 Don't forget to:"
+    echo "   - Update documentation if needed"
+    echo "   - Add tests for the new feature"
+    echo "   - Update CHANGELOG.md"
+    ;;
+  fix*)
+    echo "🔧 Bug fix committed!"
+    echo "💡 Consider:"
+    echo "   - Adding regression tests"
+    echo "   - Checking if documentation needs updates"
+    ;;
+  docs*)
+    echo "📚 Documentation updated!"
+    ;;
+  test*)
+    echo "🧪 Tests updated!"
+    echo "💡 Run the test suite: npm test"
+    ;;
+  refactor*)
+    echo "♻️  Code refactored!"
+    echo "💡 Consider running full test suite: npm test"
+    ;;
+  perf*)
+    echo "⚡ Performance improvement!"
+    echo "💡 Consider running performance benchmarks"
+    ;;
+  ci*|build*)
+    echo "🔧 CI/Build configuration updated!"
+    echo "💡 Monitor next CI/CD pipeline run"
+    ;;
+esac
+
+# Check if package.json was modified
+if git diff-tree --no-commit-id --name-only -r HEAD | grep -q "package.json"; then
+  echo "📦 package.json was modified"
+  echo "💡 Run 'npm install' to update dependencies"
+  echo "💡 Consider updating package-lock.json if needed"
+fi
+
+# Check if Docker files were modified
+if git diff-tree --no-commit-id --name-only -r HEAD | grep -qE "(Dockerfile|docker-compose.*\.yml)"; then
+  echo "🐳 Docker configuration was modified"
+  echo "💡 Consider rebuilding Docker images: npm run docker:build"
+fi
+
+echo ""
