@@ -10,6 +10,9 @@ describe('REST API Integration Tests', () => {
     // Create test app instance
     const { app: testApp, server: testServer } = await createRESTAPI({
       mode: 'test',
+      cache: {
+        enabled: false,
+      },
       db: {
         connectionString: process.env.DATABASE_URL,
         poolSize: 1,
