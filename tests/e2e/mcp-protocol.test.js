@@ -25,8 +25,8 @@ describe('MCP Protocol E2E Tests', () => {
     // Create MCP client
     mcpClient = createMCPClient(mcpProcess);
 
-    // Wait for server to initialize
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    // Wait for server to be ready
+    await mcpClient.waitForReady();
   });
 
   afterAll(async () => {
