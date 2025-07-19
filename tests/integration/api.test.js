@@ -22,6 +22,15 @@ describe('REST API Integration Tests', () => {
         port: 0, // Random port for testing
         cors: true,
         rateLimit: false,
+        maxRequestSize: '10mb',
+        compression: false,
+      },
+      security: {
+        apiKey: null,
+        jwt: null,
+      },
+      monitoring: {
+        metrics: false,
       },
     });
     app = testApp;

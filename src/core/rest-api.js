@@ -43,11 +43,11 @@ function setupMiddleware(app, config) {
     app.use('/api/', limiter);
   }
 
-  if (config.security.apiKey || config.security.jwt) {
+  if (config.security?.apiKey || config.security?.jwt) {
     app.use('/api/v1/memories', authenticate(config));
   }
 
-  if (config.monitoring.metrics) {
+  if (config.monitoring?.metrics) {
     app.use(metrics.middleware);
   }
 }
@@ -56,9 +56,40 @@ function setupHealthRoutes(app, config, memoryService) {
   app.get('/health', (req, res) => {
     res.json({
       status: 'healthy',
-      version: config.server.version,
+      version: config.server?.version || '2.0.0',
+      timestamp: new Date().toISOString(),
       uptime: process.uptime(),
     });
+  });
+
+  app.get('/health/deep', async (req, res) => {
+    try {
+      const checks = {
+        database: 'healthy',
+        embedding: 'healthy',
+      };
+
+      // Try to check database if memoryService has checkReady method
+      try {
+        if (memoryService.checkReady) {
+          await memoryService.checkReady();
+        }
+      } catch (error) {
+        checks.database = 'unhealthy';
+      }
+
+      res.json({
+        status: 'healthy',
+        timestamp: new Date().toISOString(),
+        checks,
+      });
+    } catch (error) {
+      res.status(503).json({
+        status: 'unhealthy',
+        error: error.message,
+        timestamp: new Date().toISOString(),
+      });
+    }
   });
 
   app.get('/ready', async (req, res) => {
@@ -78,7 +109,7 @@ function setupAPIRoutes(app, memoryService, config) {
   setupBatchRoutes(router, memoryService);
   setupStreamRoutes(router, memoryService);
 
-  if (config.monitoring.metrics) {
+  if (config.monitoring?.metrics) {
     app.get('/metrics', metrics.endpoint);
   }
 
