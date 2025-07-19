@@ -1,8 +1,8 @@
 # Production-optimized Dockerfile for MCP Memory Server
 # Multi-stage build for minimal image size and security
 
-# Stage 1: Dependencies
-FROM node:20-slim AS deps
+# Stage 1: Dependencies and Build
+FROM node:20-slim AS builder
 WORKDIR /app
 
 # Install build dependencies
@@ -11,31 +11,26 @@ RUN apt-get update && apt-get install -y \
     make \
     g++ \
     git \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy package files
+# Copy package files first for better caching
 COPY package*.json ./
 
-# Install production dependencies
-RUN npm ci --omit=dev && \
+# Install all dependencies (including dev for build)
+RUN npm ci && \
     npm cache clean --force
-
-# Stage 2: Build
-FROM node:20-slim AS builder
-WORKDIR /app
-
-# Copy dependencies
-COPY --from=deps /app/node_modules ./node_modules
-COPY package*.json ./
 
 # Copy source code
 COPY src ./src
 COPY migrations ./migrations
+COPY config ./config
+COPY scripts ./scripts
 
 # Create necessary directories
 RUN mkdir -p models logs tmp
 
-# Stage 3: Production
+# Stage 2: Production
 FROM node:20-slim AS production
 
 # Install runtime dependencies
@@ -50,18 +45,23 @@ RUN groupadd -g 1001 appgroup && \
 
 WORKDIR /app
 
-# Copy from builder
+# Copy only production files from builder
 COPY --from=builder --chown=appuser:appgroup /app/node_modules ./node_modules
 COPY --from=builder --chown=appuser:appgroup /app/src ./src
 COPY --from=builder --chown=appuser:appgroup /app/migrations ./migrations
+COPY --from=builder --chown=appuser:appgroup /app/config ./config
 COPY --from=builder --chown=appuser:appgroup /app/package*.json ./
 COPY --from=builder --chown=appuser:appgroup /app/models ./models
 COPY --from=builder --chown=appuser:appgroup /app/logs ./logs
 COPY --from=builder --chown=appuser:appgroup /app/tmp ./tmp
 
-# Set permissions
+# Set proper permissions
 RUN chmod -R 750 /app && \
     chmod -R 770 /app/logs /app/tmp /app/models
+
+# Remove dev dependencies in production stage
+RUN npm prune --omit=dev && \
+    npm cache clean --force
 
 USER appuser
 
