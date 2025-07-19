@@ -9,7 +9,7 @@ on:
     types: [published]
 
 env:
-  NODE_VERSION: '20'
+  NODE_VERSION: '22.17.1'
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
 
@@ -20,7 +20,7 @@ jobs:
     
     services:
       postgres:
-        image: pgvector/pgvector:pg16-v0.7.4
+        image: pgvector/pgvector:0.7.4-pg16
         env:
           POSTGRES_PASSWORD: test_password
           POSTGRES_USER: mcp_user
@@ -175,7 +175,7 @@ jobs:
             -e POSTGRES_PASSWORD=test_password \
             -e POSTGRES_USER=mcp_user \
             -e POSTGRES_DB=mcp_memory_test \
-            pgvector/pgvector:pg16-v0.7.4
+            pgvector/pgvector:0.7.4-pg16
           
           # Wait for database
           sleep 10
