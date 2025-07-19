@@ -1,0 +1,219 @@
+# Staging Docker Compose configuration
+# Production-like environment for testing and validation
+
+networks:
+  mcp_staging_network:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: mcp-staging-bridge
+  db_staging_network:
+    driver: bridge
+    internal: true
+
+volumes:
+  postgres_staging_data:
+    driver: local
+  app_staging_logs:
+    driver: local
+  app_staging_models:
+    driver: local
+
+# Staging secrets (less secure than production)
+secrets:
+  db_password:
+    file: ./secrets/staging_db_password.txt
+  jwt_secret:
+    file: ./secrets/staging_jwt_secret.txt
+  api_key:
+    file: ./secrets/staging_api_key.txt
+
+services:
+  # PostgreSQL Database Service - Staging
+  postgres:
+    image: pgvector/pgvector:pg16-v0.7.4
+    container_name: mcp-postgres-staging
+    restart: unless-stopped
+
+    # Moderate security for staging
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=100m
+      - /var/run/postgresql:noexec,nosuid,size=100m
+
+    # Resource limits (smaller than production)
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1G
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+
+    security_opt:
+      - no-new-privileges:true
+
+    environment:
+      POSTGRES_DB: mcp_memory_staging
+      POSTGRES_USER: mcp_staging_user
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
+
+    secrets:
+      - db_password
+
+    volumes:
+      - postgres_staging_data:/var/lib/postgresql/data
+      - ./config/database/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+
+    networks:
+      - db_staging_network
+
+    healthcheck:
+      test:
+        ["CMD-SHELL", "pg_isready -U mcp_staging_user -d mcp_memory_staging"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # MCP Memory Application Service - Staging
+  mcp-memory:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+
+    container_name: mcp-memory-staging
+    restart: unless-stopped
+
+    # Security configurations
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=100m
+      - /app/tmp:noexec,nosuid,size=100m
+
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+        reservations:
+          cpus: "0.1"
+          memory: 128M
+
+    security_opt:
+      - no-new-privileges:true
+
+    cap_drop:
+      - ALL
+
+    environment:
+      NODE_ENV: staging
+      PORT: 3333
+      HEALTH_PORT: 3334
+      DATABASE_URL_FILE: /run/secrets/db_connection
+      JWT_SECRET_FILE: /run/secrets/jwt_secret
+      API_KEY_FILE: /run/secrets/api_key
+      LOG_LEVEL: info
+      LOG_FILE_PATH: /app/logs/mcp-memory-staging.log
+      BERT_MODEL_PATH: /app/models
+      EMBEDDING_DIMENSIONS: 384
+
+    secrets:
+      - db_password
+      - jwt_secret
+      - api_key
+
+    volumes:
+      - app_staging_logs:/app/logs
+      - app_staging_models:/app/models
+
+    networks:
+      - mcp_staging_network
+      - db_staging_network
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    ports:
+      - "127.0.0.1:3333:3333"
+      - "127.0.0.1:3334:3334"
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3334/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "service=mcp-memory,environment=staging"
+
+  # Nginx Reverse Proxy - Staging
+  nginx:
+    image: nginx:1.25.5-alpine
+    container_name: mcp-nginx-staging
+    restart: unless-stopped
+
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=50m
+      - /var/cache/nginx:noexec,nosuid,size=50m
+      - /var/run:noexec,nosuid,size=50m
+
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128M
+        reservations:
+          cpus: "0.05"
+          memory: 32M
+
+    security_opt:
+      - no-new-privileges:true
+
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - SETGID
+      - SETUID
+      - NET_BIND_SERVICE
+
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/staging.conf:/etc/nginx/conf.d/default.conf:ro
+
+    networks:
+      - mcp_staging_network
+
+    depends_on:
+      mcp-memory:
+        condition: service_healthy
+
+    ports:
+      - "8080:80" # Different port for staging
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost/health",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s

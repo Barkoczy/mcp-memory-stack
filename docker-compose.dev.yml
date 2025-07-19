@@ -1,0 +1,118 @@
+# Development Docker Compose configuration
+# Optimized for development workflow with hot reloading and debugging
+
+networks:
+  mcp_dev_network:
+    driver: bridge
+
+volumes:
+  postgres_dev_data:
+    driver: local
+  app_dev_logs:
+    driver: local
+
+services:
+  # PostgreSQL Database Service - Development
+  postgres:
+    image: pgvector/pgvector:pg14
+    container_name: mcp-postgres-dev
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_DB: mcp_memory_dev
+      POSTGRES_USER: mcp_dev_user
+      POSTGRES_PASSWORD: dev_password_123
+      POSTGRES_INITDB_ARGS: "--auth-host=md5 --auth-local=md5"
+
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+      - ./config/database/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+
+    networks:
+      - mcp_dev_network
+
+    ports:
+      - "5432:5432" # Expose for development tools
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mcp_dev_user -d mcp_memory_dev"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # MCP Memory Application Service - Development
+  mcp-memory:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production # Use production stage
+
+    container_name: mcp-memory-dev
+    restart: unless-stopped
+
+    environment:
+      NODE_ENV: development
+      PORT: 3333
+      HEALTH_PORT: 3334
+      DATABASE_URL: postgresql://mcp_dev_user:dev_password_123@postgres:5432/mcp_memory_dev
+      JWT_SECRET: dev_jwt_secret_not_for_production
+      API_KEY: dev_api_key_123
+      LOG_LEVEL: debug
+      LOG_FILE_PATH: /app/logs/mcp-memory-dev.log
+      BERT_MODEL_PATH: /app/models
+      EMBEDDING_DIMENSIONS: 384
+      REDIS_URL: redis://redis:6379
+      # Development overrides
+      CACHE_ENABLED: "false"
+      API_KEY_REQUIRED: "false"
+      JWT_ENABLED: "false"
+      REST_API_ENABLED: "true"
+      MCP_MODE: "false"
+
+    volumes:
+      - app_dev_logs:/app/logs
+      - ./models:/app/models
+      - ./src:/app/src:ro
+      - ./migrations:/app/migrations:ro
+
+    networks:
+      - mcp_dev_network
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    ports:
+      - "3333:3333"
+      - "3334:3334"
+      - "9229:9229" # Node.js debugging port
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3334/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+    # Development command with debugging
+    command: ["node", "--inspect=0.0.0.0:9229", "src/index.js"]
+    user: root # Run as root in development for easier debugging
+
+  # Redis for development caching (optional)
+  redis:
+    image: redis:7.2.5-alpine
+    container_name: mcp-redis-dev
+    restart: unless-stopped
+
+    networks:
+      - mcp_dev_network
+
+    ports:
+      - "6379:6379"
+
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3

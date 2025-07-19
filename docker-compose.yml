@@ -1,0 +1,102 @@
+services:
+  # PostgreSQL with pgvector extension
+  postgres:
+    image: pgvector/pgvector:pg14
+    container_name: mcp-postgres
+    environment:
+      POSTGRES_DB: mcp_memory
+      POSTGRES_USER: mcp_user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mcp_secure_password_2024}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --lc-collate=C --lc-ctype=C"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./config/database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - mcp_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mcp_user -d mcp_memory"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # MCP Memory Server
+  mcp-memory:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mcp-memory-server
+    environment:
+      DATABASE_URL: "postgresql://mcp_user:${POSTGRES_PASSWORD:-mcp_secure_password_2024}@postgres:5432/mcp_memory"
+      PORT: 3333
+      NODE_ENV: production
+      BERT_MODEL_PATH: "/app/models"
+    ports:
+      - "3333:3333"
+      - "3334:3334"
+    volumes:
+      - ./models:/app/models
+      - ./logs:/app/logs
+    networks:
+      - mcp_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3334/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Optional: Redis for caching (enterprise upgrade)
+  redis:
+    image: redis:7-alpine
+    container_name: mcp-redis
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - mcp_network
+    restart: unless-stopped
+    profiles:
+      - cache
+
+  # Optional: pgAdmin for database management
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: mcp-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@mcp-memory.local
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin_password_2024}
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+    ports:
+      - "8080:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    networks:
+      - mcp_network
+    depends_on:
+      - postgres
+    restart: unless-stopped
+    profiles:
+      - admin
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  pgadmin_data:
+    driver: local
+
+networks:
+  mcp_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

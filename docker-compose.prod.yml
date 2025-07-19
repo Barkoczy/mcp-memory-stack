@@ -1,0 +1,292 @@
+# Production Docker Compose configuration
+# Following Docker Compose security best practices 2025
+
+# Define custom networks for better isolation
+networks:
+  mcp_network:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: mcp-bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+          gateway: 172.20.0.1
+  db_network:
+    driver: bridge
+    internal: true # Database network is internal only
+    ipam:
+      config:
+        - subnet: 172.21.0.0/16
+
+# Define volumes with proper configuration
+volumes:
+  postgres_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /var/lib/docker/volumes/mcp_postgres_data
+  app_logs:
+    driver: local
+  app_models:
+    driver: local
+
+# Define secrets for sensitive data
+secrets:
+  db_password:
+    file: ./secrets/db_password.txt
+  db_root_password:
+    file: ./secrets/db_root_password.txt
+  jwt_secret:
+    file: ./secrets/jwt_secret.txt
+  api_key:
+    file: ./secrets/api_key.txt
+
+services:
+  # PostgreSQL Database Service
+  postgres:
+    image: pgvector/pgvector:pg16-v0.7.4 # Use specific version
+    container_name: mcp-postgres-prod
+    restart: unless-stopped
+
+    # Security configurations
+    user: "999:999" # postgres user
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=100m
+      - /var/run/postgresql:noexec,nosuid,size=100m
+
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+        reservations:
+          cpus: "0.5"
+          memory: 512M
+
+    # Security options
+    security_opt:
+      - no-new-privileges:true
+      - apparmor:docker-default
+
+    # Capabilities
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+
+    # Environment variables using secrets
+    environment:
+      POSTGRES_DB: mcp_memory
+      POSTGRES_USER: mcp_user
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
+      PGDATA: /var/lib/postgresql/data/pgdata
+
+    # Secrets
+    secrets:
+      - db_password
+
+    # Volumes
+    volumes:
+      - postgres_data:/var/lib/postgresql/data:Z
+      - ./config/database/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+
+    # Networks
+    networks:
+      - db_network
+
+    # Health check
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mcp_user -d mcp_memory"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+    # Logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "service=postgres,environment=production"
+
+  # MCP Memory Application Service
+  mcp-memory:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+      args:
+        BUILDKIT_INLINE_CACHE: 1
+
+    container_name: mcp-memory-prod
+    restart: unless-stopped
+
+    # Security configurations
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=100m
+      - /app/tmp:noexec,nosuid,size=100m
+
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1G
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+
+    # Security options
+    security_opt:
+      - no-new-privileges:true
+      - apparmor:docker-default
+
+    # Capabilities - drop all, add only necessary
+    cap_drop:
+      - ALL
+
+    # Environment variables
+    environment:
+      NODE_ENV: production
+      PORT: 3333
+      HEALTH_PORT: 3334
+      DATABASE_URL_FILE: /run/secrets/db_connection
+      JWT_SECRET_FILE: /run/secrets/jwt_secret
+      API_KEY_FILE: /run/secrets/api_key
+      LOG_LEVEL: info
+      LOG_FILE_PATH: /app/logs/mcp-memory.log
+      BERT_MODEL_PATH: /app/models
+      EMBEDDING_DIMENSIONS: 384
+
+    # Secrets
+    secrets:
+      - db_password
+      - jwt_secret
+      - api_key
+
+    # Volumes
+    volumes:
+      - app_logs:/app/logs:Z
+      - app_models:/app/models:Z
+
+    # Networks
+    networks:
+      - mcp_network
+      - db_network
+
+    # Dependencies
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3334/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+    # Logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "service=mcp-memory,environment=production"
+
+    # Ports - only expose what's necessary
+    ports:
+      - "127.0.0.1:3333:3333" # Bind to localhost only
+      - "127.0.0.1:3334:3334" # Health check port
+
+  # Reverse Proxy (Nginx) for additional security
+  nginx:
+    image: nginx:1.25.5-alpine
+    container_name: mcp-nginx-prod
+    restart: unless-stopped
+
+    # Security configurations
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=100m
+      - /var/cache/nginx:noexec,nosuid,size=100m
+      - /var/run:noexec,nosuid,size=100m
+
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+        reservations:
+          cpus: "0.1"
+          memory: 64M
+
+    # Security options
+    security_opt:
+      - no-new-privileges:true
+      - apparmor:docker-default
+
+    # Capabilities
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - SETGID
+      - SETUID
+      - NET_BIND_SERVICE
+
+    # Configuration
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+
+    # Networks
+    networks:
+      - mcp_network
+
+    # Dependencies
+    depends_on:
+      mcp-memory:
+        condition: service_healthy
+
+    # Ports
+    ports:
+      - "80:80"
+      - "443:443"
+
+    # Health check
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost/health",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+    # Logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "service=nginx,environment=production"
