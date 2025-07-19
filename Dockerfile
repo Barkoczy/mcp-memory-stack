@@ -17,7 +17,7 @@ RUN apt-get update && apt-get install -y \
 COPY package*.json ./
 
 # Install production dependencies
-RUN npm ci --only=production && \
+RUN npm ci --omit=dev && \
     npm cache clean --force
 
 # Stage 2: Build
