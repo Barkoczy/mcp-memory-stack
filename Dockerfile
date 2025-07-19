@@ -2,7 +2,7 @@
 # Multi-stage build for minimal image size and security
 
 # Stage 1: Dependencies and Build
-FROM node:22.16.4-slim AS builder
+FROM node:22.17.1-slim AS builder
 WORKDIR /app
 
 # Install build dependencies
@@ -31,7 +31,7 @@ COPY scripts ./scripts
 RUN mkdir -p models logs tmp
 
 # Stage 2: Production
-FROM node:22.16.4-slim AS production
+FROM node:22.17.1-slim AS production
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \

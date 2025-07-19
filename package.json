@@ -5,7 +5,7 @@
   "description": "High-performance MCP Memory Server with semantic search capabilities",
   "main": "src/index.js",
   "engines": {
-    "node": "22.16.4",
+    "node": "22.17.1",
     "npm": ">=10.8.1"
   },
   "scripts": {
