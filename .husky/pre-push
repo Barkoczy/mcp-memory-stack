@@ -14,6 +14,11 @@ if echo "$current_branch" | grep -qE "^($protected_branches)$"; then
   echo "🔒 Pushing to protected branch: $current_branch"
   echo "🧪 Running comprehensive tests..."
   
+  # Load test environment variables
+  if [ -f .env.test ]; then
+    export $(cat .env.test | grep -v '^#' | xargs)
+  fi
+  
   # Run full test suite for protected branches
   npm run test
   
@@ -49,6 +54,11 @@ if echo "$current_branch" | grep -qE "^($protected_branches)$"; then
 else
   echo "📝 Pushing to feature branch: $current_branch"
   echo "🧪 Running unit tests..."
+  
+  # Load test environment variables
+  if [ -f .env.test ]; then
+    export $(cat .env.test | grep -v '^#' | xargs)
+  fi
   
   # Run only unit tests for feature branches
   npm run test:unit
