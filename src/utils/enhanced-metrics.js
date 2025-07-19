@@ -16,7 +16,6 @@ class EnhancedMetricsService {
     collectDefaultMetrics({
       register,
       prefix: 'mcp_memory_server_',
-      timeout: 5000,
       gcDurationBuckets: [0.001, 0.01, 0.1, 1, 2, 5],
     });
 

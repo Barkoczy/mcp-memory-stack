@@ -3,8 +3,8 @@ import { logger } from '../utils/logger.js';
 // Conditionally import transformers only in non-test environments
 let pipeline;
 if (process.env.NODE_ENV !== 'test') {
-  const transformers = await import('@xenova/transformers');
-  pipeline = transformers.pipeline;
+  const { pipeline: pipelineImport } = await import('@xenova/transformers');
+  pipeline = pipelineImport;
 }
 
 export class EmbeddingService {
@@ -37,9 +37,9 @@ export class EmbeddingService {
         logger.info('Using mock embedding model for tests');
         return {
           // Mock embedder function
-          call: (text) => ({
-            data: new Array(this.config.dimension || 384).fill(0.1)
-          })
+          call: _text => ({
+            data: new Array(this.config.dimension || 384).fill(0.1),
+          }),
         };
       }
 

@@ -5,8 +5,7 @@ import { createRESTAPI } from './core/rest-api.js';
 import { initializeDatabase } from './database/connection.js';
 import { createHealthServer } from './utils/health-server.js';
 import { config } from './config.js';
-import enhancedLogger, { gracefulShutdown as shutdownLogger } from './utils/advanced-logger.js';
-import { enhancedMetrics } from './utils/enhanced-metrics.js';
+import { logger } from './utils/logger.js';
 
 // Load environment variables
 dotenv.config();
@@ -14,9 +13,9 @@ dotenv.config();
 const NODE_ENV = process.env.NODE_ENV || 'development';
 const MODE = NODE_ENV === 'production' ? 'production' : 'development';
 
-// Global error handlers with enhanced logging
+// Global error handlers
 process.on('uncaughtException', error => {
-  enhancedLogger.fatal('Uncaught Exception', {
+  logger.error('Uncaught Exception', {
     error: error.message,
     stack: error.stack,
     pid: process.pid,
@@ -25,7 +24,7 @@ process.on('uncaughtException', error => {
 });
 
 process.on('unhandledRejection', (reason, promise) => {
-  enhancedLogger.fatal('Unhandled Rejection', {
+  logger.error('Unhandled Rejection', {
     reason: reason?.toString(),
     promise: promise?.toString(),
     pid: process.pid,
@@ -34,141 +33,118 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 // Track application startup time
-const startupTimer = enhancedLogger.performance.start('application_startup');
+const startupTime = Date.now();
 
-function logStartupInfo(correlationId) {
-  enhancedLogger.info('🚀 Starting MCP Memory Server', {
+function logStartupInfo() {
+  logger.info('🚀 Starting MCP Memory Server', {
     mode: MODE,
     nodeVersion: process.version,
     platform: process.platform,
     architecture: process.arch,
     pid: process.pid,
     environment: NODE_ENV,
-    correlationId,
   });
 }
 
-function logStartupSuccess(totalStartupDuration, correlationId) {
-  enhancedLogger.info('🎉 MCP Memory Server started successfully', {
-    totalStartupTime: totalStartupDuration,
+function logStartupSuccess(totalStartupDuration) {
+  logger.info('🎉 MCP Memory Server started successfully', {
+    totalStartupTime: `${totalStartupDuration}ms`,
     mode: MODE,
     healthPort: process.env.HEALTH_PORT || '3334',
     restPort: process.env.PORT || '3333',
     mcpEnabled: process.env.MCP_MODE !== 'false',
     restEnabled: process.env.REST_API_ENABLED !== 'false',
-    correlationId,
   });
 }
 
-async function initializeDatabaseWithTracking(correlationId) {
-  const dbTimer = enhancedLogger.performance.start('database_initialization');
+async function initializeDatabaseWithTracking() {
+  const dbStartTime = Date.now();
   try {
     await initializeDatabase();
-    const dbDuration = dbTimer.end({
-      operation: 'database_init',
-      status: 'success',
-    });
+    const dbDuration = Date.now() - dbStartTime;
 
-    enhancedMetrics.trackDbQuery('init', 'connection', true, dbDuration / 1000);
-    enhancedLogger.info('✅ Database connection established', {
-      duration: dbDuration,
-      correlationId,
+    logger.info('✅ Database connection established', {
+      duration: `${dbDuration}ms`,
     });
   } catch (error) {
-    const dbDuration = dbTimer.end({
-      operation: 'database_init',
-      status: 'failure',
+    const dbDuration = Date.now() - dbStartTime;
+    logger.error('❌ Database initialization failed', {
+      duration: `${dbDuration}ms`,
+      error: error.message,
     });
-
-    enhancedMetrics.trackDbQuery('init', 'connection', false, dbDuration / 1000);
-    enhancedMetrics.trackError('database_init', 'mcp-memory-server', 'startup', 'critical');
     throw error;
   }
 }
 
-function startHealthServer(correlationId) {
+function startHealthServer() {
   const healthPort = parseInt(process.env.HEALTH_PORT || '3334', 10);
-  const healthTimer = enhancedLogger.performance.start('health_server_startup');
+  const healthStartTime = Date.now();
 
   try {
-    createHealthServer(healthPort, enhancedMetrics);
-    const healthDuration = healthTimer.end({
-      operation: 'health_server_startup',
-      status: 'success',
-      port: healthPort,
-    });
+    createHealthServer(healthPort);
+    const healthDuration = Date.now() - healthStartTime;
 
-    enhancedLogger.info('✅ Health check server listening', {
+    logger.info('✅ Health check server listening', {
       port: healthPort,
-      duration: healthDuration,
+      duration: `${healthDuration}ms`,
       metricsPath: '/metrics',
-      correlationId,
     });
   } catch (error) {
-    healthTimer.end({
-      operation: 'health_server_startup',
-      status: 'failure',
+    const healthDuration = Date.now() - healthStartTime;
+    logger.error('❌ Health server startup failed', {
       port: healthPort,
+      duration: `${healthDuration}ms`,
+      error: error.message,
     });
-    enhancedMetrics.trackError('health_server_init', 'mcp-memory-server', 'startup', 'critical');
     throw error;
   }
 }
 
-function startMCPServerIfEnabled(correlationId) {
+function startMCPServerIfEnabled() {
   if (process.env.MCP_MODE === 'true' || !process.env.REST_API_ONLY) {
-    const mcpTimer = enhancedLogger.performance.start('mcp_server_startup');
+    const mcpStartTime = Date.now();
 
     try {
-      createMCPServer(config[MODE], enhancedLogger, enhancedMetrics);
-      const mcpDuration = mcpTimer.end({
-        operation: 'mcp_server_startup',
-        status: 'success',
-      });
+      createMCPServer(config[MODE]);
+      const mcpDuration = Date.now() - mcpStartTime;
 
-      enhancedLogger.info('✅ MCP server started', {
+      logger.info('✅ MCP server started', {
         mode: MODE,
-        duration: mcpDuration,
+        duration: `${mcpDuration}ms`,
         protocol: 'stdio',
-        correlationId,
       });
     } catch (error) {
-      mcpTimer.end({
-        operation: 'mcp_server_startup',
-        status: 'failure',
+      const mcpDuration = Date.now() - mcpStartTime;
+      logger.error('❌ MCP server startup failed', {
+        duration: `${mcpDuration}ms`,
+        error: error.message,
       });
-      enhancedMetrics.trackError('mcp_server_init', 'mcp-memory-server', 'startup', 'critical');
       throw error;
     }
   }
 }
 
-function startRESTAPIIfEnabled(correlationId) {
+function startRESTAPIIfEnabled() {
   if (process.env.REST_API_ENABLED !== 'false') {
     const port = parseInt(process.env.PORT || '3333', 10);
-    const restTimer = enhancedLogger.performance.start('rest_api_startup');
+    const restStartTime = Date.now();
 
     try {
-      createRESTAPI(config[MODE], port, enhancedLogger, enhancedMetrics);
-      const restDuration = restTimer.end({
-        operation: 'rest_api_startup',
-        status: 'success',
-        port,
-      });
+      createRESTAPI(config[MODE], port);
+      const restDuration = Date.now() - restStartTime;
 
-      enhancedLogger.info('✅ REST API server listening', {
+      logger.info('✅ REST API server listening', {
         port,
-        duration: restDuration,
+        duration: `${restDuration}ms`,
         mode: MODE,
-        correlationId,
       });
     } catch (error) {
-      restTimer.end({
-        operation: 'rest_api_startup',
-        status: 'failure',
+      const restDuration = Date.now() - restStartTime;
+      logger.error('❌ REST API startup failed', {
         port,
+        duration: `${restDuration}ms`,
+        error: error.message,
       });
-      enhancedMetrics.trackError('rest_api_init', 'mcp-memory-server', 'startup', 'critical');
       throw error;
     }
   }
@@ -176,64 +152,37 @@ function startRESTAPIIfEnabled(correlationId) {
 
 async function main() {
   try {
-    const correlationId = `startup-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    logStartupInfo();
 
-    await enhancedLogger.withCorrelationId(correlationId, async () => {
-      logStartupInfo(correlationId);
-      enhancedLogger.security.authSuccess('system', 'startup', { mode: MODE, correlationId });
+    await initializeDatabaseWithTracking();
+    startHealthServer();
+    startMCPServerIfEnabled();
+    startRESTAPIIfEnabled();
 
-      await initializeDatabaseWithTracking(correlationId);
-      startHealthServer(correlationId);
-      startMCPServerIfEnabled(correlationId);
-      startRESTAPIIfEnabled(correlationId);
-
-      const totalStartupDuration = startupTimer.end({
-        operation: 'full_startup',
-        status: 'success',
-        mode: MODE,
-      });
-
-      logStartupSuccess(totalStartupDuration, correlationId);
-      enhancedMetrics.trackMemoryOperation('startup', true, totalStartupDuration / 1000, {
-        type: 'system',
-        source: 'application',
-      });
-    });
+    const totalStartupDuration = Date.now() - startupTime;
+    logStartupSuccess(totalStartupDuration);
 
     process.on('SIGTERM', () => shutdown('SIGTERM'));
     process.on('SIGINT', () => shutdown('SIGINT'));
-    setupHealthMonitoring();
   } catch (error) {
-    const failureDuration = startupTimer.end({
-      operation: 'full_startup',
-      status: 'failure',
-      mode: MODE,
-    });
+    const failureDuration = Date.now() - startupTime;
 
-    enhancedLogger.fatal('❌ Failed to start server', {
+    logger.error('❌ Failed to start server', {
       error: error.message,
       stack: error.stack,
-      duration: failureDuration,
+      duration: `${failureDuration}ms`,
       mode: MODE,
       nodeVersion: process.version,
     });
 
-    enhancedMetrics.trackError('startup_failure', 'mcp-memory-server', 'main', 'critical');
-    enhancedMetrics.trackMemoryOperation('startup', false, failureDuration / 1000, {
-      type: 'system',
-      source: 'application',
-      error: error.message,
-    });
-
-    await gracefulShutdown();
     process.exit(1);
   }
 }
 
-async function shutdown(signal) {
-  const shutdownTimer = enhancedLogger.performance.start('graceful_shutdown');
+function shutdown(signal) {
+  const shutdownStartTime = Date.now();
 
-  enhancedLogger.info('🛑 Graceful shutdown initiated', {
+  logger.info('🛑 Graceful shutdown initiated', {
     signal,
     pid: process.pid,
     uptime: process.uptime(),
@@ -242,109 +191,38 @@ async function shutdown(signal) {
   try {
     // Shutdown sequence with timeout
     const shutdownTimeout = setTimeout(() => {
-      enhancedLogger.error('⏰ Shutdown timeout reached, forcing exit');
+      logger.error('⏰ Shutdown timeout reached, forcing exit');
       process.exit(1);
     }, 30000); // 30 second timeout
 
     // Stop accepting new connections
-    enhancedLogger.info('📡 Stopping HTTP servers...');
+    logger.info('📡 Stopping HTTP servers...');
 
     // Close database connections
-    enhancedLogger.info('🗄️ Closing database connections...');
+    logger.info('🗄️ Closing database connections...');
 
-    // Flush metrics and logs
-    enhancedLogger.info('📊 Flushing metrics and logs...');
-    await shutdownLogger();
-
-    const shutdownDuration = shutdownTimer.end({
-      operation: 'graceful_shutdown',
-      status: 'success',
-      signal,
-    });
+    const shutdownDuration = Date.now() - shutdownStartTime;
 
     clearTimeout(shutdownTimeout);
 
-    enhancedLogger.info('✅ Graceful shutdown completed', {
+    logger.info('✅ Graceful shutdown completed', {
       signal,
-      duration: shutdownDuration,
+      duration: `${shutdownDuration}ms`,
       pid: process.pid,
     });
 
     process.exit(0);
   } catch (error) {
-    const shutdownDuration = shutdownTimer.end({
-      operation: 'graceful_shutdown',
-      status: 'failure',
-      signal,
-    });
+    const shutdownDuration = Date.now() - shutdownStartTime;
 
-    enhancedLogger.error('❌ Error during shutdown', {
+    logger.error('❌ Error during shutdown', {
       error: error.message,
       stack: error.stack,
-      duration: shutdownDuration,
+      duration: `${shutdownDuration}ms`,
       signal,
     });
 
     process.exit(1);
-  }
-}
-
-function setupHealthMonitoring() {
-  // Monitor memory usage every 30 seconds
-  setInterval(() => {
-    const memUsage = process.memoryUsage();
-    const cpuUsage = process.cpuUsage();
-
-    enhancedLogger.debug('📊 System health check', {
-      memory: {
-        rss: memUsage.rss,
-        heapTotal: memUsage.heapTotal,
-        heapUsed: memUsage.heapUsed,
-        external: memUsage.external,
-        heapUsedPercent: (memUsage.heapUsed / memUsage.heapTotal) * 100,
-      },
-      cpu: {
-        user: cpuUsage.user,
-        system: cpuUsage.system,
-      },
-      uptime: process.uptime(),
-      pid: process.pid,
-    });
-
-    // Alert if memory usage is high
-    const heapUsedPercent = (memUsage.heapUsed / memUsage.heapTotal) * 100;
-    if (heapUsedPercent > 85) {
-      enhancedLogger.warn('⚠️ High memory usage detected', {
-        heapUsedPercent,
-        heapUsed: memUsage.heapUsed,
-        heapTotal: memUsage.heapTotal,
-      });
-    }
-  }, 30000);
-
-  // Monitor event loop lag
-  let previousTime = process.hrtime.bigint();
-  setInterval(() => {
-    const currentTime = process.hrtime.bigint();
-    const lag = Number(currentTime - previousTime - 1000000000n) / 1000000; // Expected 1s, convert to ms
-    previousTime = currentTime;
-
-    if (lag > 100) {
-      // More than 100ms lag
-      enhancedLogger.warn('⚠️ High event loop lag detected', {
-        lag,
-        unit: 'milliseconds',
-      });
-    }
-  }, 1000);
-}
-
-// Enhanced graceful shutdown
-async function gracefulShutdown() {
-  try {
-    await shutdownLogger();
-  } catch (error) {
-    console.error('Error during logger shutdown:', error);
   }
 }
 

@@ -10,9 +10,12 @@ describe('REST API Integration Tests', () => {
 
   beforeAll(async () => {
     // Initialize database first
-    process.env.DATABASE_URL = 'postgresql://mcp_user:mcp_secure_password_2024@localhost:5432/mcp_memory_test';
+    // Ensure DATABASE_URL is set for tests (should be in .env.test)
+    if (!process.env.DATABASE_URL) {
+      throw new Error('DATABASE_URL environment variable is required for integration tests');
+    }
     await initializeDatabase();
-    
+
     // Create test app instance
     const { app: testApp, server: testServer } = await createRESTAPI({
       mode: 'test',
@@ -101,11 +104,11 @@ describe('REST API Integration Tests', () => {
       };
 
       const response = await request(app).post('/api/v1/memories').send(memoryData);
-      
+
       if (response.status !== 201) {
         console.log('Error response:', response.status, response.body);
       }
-      
+
       expect(response.status).toBe(201);
 
       expect(response.body).toMatchObject({

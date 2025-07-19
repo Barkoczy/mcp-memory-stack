@@ -122,7 +122,7 @@ export class MemoryService extends EventEmitter {
     const response = {
       memories,
       query: searchQuery,
-      total: memories.length
+      total: memories.length,
     };
 
     // Cache results

@@ -15,22 +15,32 @@ fi
 # Enhanced secrets detection
 echo "🔒 Checking for potential secrets..."
 
-# Basic pattern matching for immediate detection
-git diff --cached --name-only | xargs grep -l -i -E "(password|secret|key|token|api_key|private_key|credential)" 2>/dev/null && {
-  echo "⚠️  Warning: Potential secrets detected in staged files!"
-  echo "Please review and remove any sensitive information before committing."
-  echo "If these are legitimate file contents, you can bypass this check with --no-verify"
-  exit 1
-} || true
-
-# Additional security patterns
+# More precise secret detection - avoid false positives from code
+# Look for actual secret patterns, not just keywords in code
 staged_files=$(git diff --cached --name-only --diff-filter=AM 2>/dev/null || true)
 if [ -n "$staged_files" ]; then
-  # Check for common secret patterns
-  secret_patterns="(BEGIN RSA PRIVATE KEY|BEGIN PRIVATE KEY|-----BEGIN|aws_access_key_id|aws_secret_access_key|GITHUB_TOKEN|SLACK_TOKEN)"
-  echo "$staged_files" | xargs grep -l -E "$secret_patterns" 2>/dev/null && {
-    echo "🚨 Critical: High-confidence secrets detected!"
-    echo "These patterns indicate actual secrets. Please remove them immediately."
+  # Check for actual credential assignments with real values (not test patterns)
+  # Exclude test files and config files with obvious test values
+  secret_files=$(echo "$staged_files" | grep -v -E '\.(test|spec)\.(js|ts)$|\.env\.test$|\.env\.example$' || true)
+  if [ -n "$secret_files" ]; then
+    # Look for actual secrets: long strings assigned to credential-like variables
+    # Exclude obvious test/example values
+    echo "$secret_files" | xargs grep -H -n -E "(password|secret|token|api_key)\s*[:=]\s*['\"][^'\"]{20,}" 2>/dev/null | \
+    grep -v -E "(test_|example_|demo_|mock_|fake_|placeholder|your_|<|>|\$\{)" && {
+      echo "⚠️  Warning: Potential secrets detected in staged files!"
+      echo "Please review and remove any sensitive information before committing."
+      exit 1
+    } || true
+  fi
+fi
+
+# Check for private keys and high-confidence patterns
+staged_files=$(git diff --cached --name-only --diff-filter=AM 2>/dev/null || true)
+if [ -n "$staged_files" ]; then
+  # Check for actual private keys and tokens (not variable names)
+  echo "$staged_files" | xargs grep -l -E "(BEGIN [A-Z]+ PRIVATE KEY|AKIA[0-9A-Z]{16}|[A-Za-z0-9+/]{40,})" 2>/dev/null && {
+    echo "🚨 Critical: Private keys or tokens detected!"
+    echo "These appear to be actual secrets. Please remove them immediately."
     exit 1
   } || true
 fi

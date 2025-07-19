@@ -22,9 +22,11 @@ export function createRESTAPI(config, port = 3333) {
 }
 
 function setupMiddleware(app, config) {
-  app.use(helmet({
-    frameguard: { action: 'deny' }
-  }));
+  app.use(
+    helmet({
+      frameguard: { action: 'deny' },
+    })
+  );
   app.use(express.json({ limit: config.api.maxRequestSize }));
 
   if (config.api.compression) {
@@ -125,9 +127,9 @@ function setupMemoryRoutes(router, memoryService) {
       res.status(201).json(memory);
     } catch (error) {
       logger.error('Create memory failed:', error);
-      res.status(400).json({ 
+      res.status(400).json({
         error: error.message,
-        message: `Memory validation failed: ${error.message}`
+        message: `Memory validation failed: ${error.message}`,
       });
     }
   });
