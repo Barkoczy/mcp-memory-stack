@@ -50,7 +50,6 @@ jobs:
         run: |
           PGPASSWORD=test_password psql -h localhost -U mcp_user -d mcp_memory_test -c "
           CREATE EXTENSION IF NOT EXISTS vector;
-          CREATE EXTENSION IF NOT EXISTS uuid-ossp;
           
           CREATE TABLE IF NOT EXISTS memories (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
