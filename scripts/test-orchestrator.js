@@ -32,7 +32,7 @@ class TestOrchestrator {
     if (!fs.existsSync(this.logDir)) {
       fs.mkdirSync(this.logDir, { recursive: true });
     }
-    fs.appendFileSync(this.logFile, logEntry + '\n');
+    fs.appendFileSync(this.logFile, `${logEntry  }\n`);
   }
 
   async executeCommand(command, options = {}) {

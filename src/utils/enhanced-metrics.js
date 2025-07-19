@@ -1,5 +1,6 @@
-import { register, Counter, Histogram, Gauge, Summary, collectDefaultMetrics } from 'prom-client';
+/* global setImmediate */
 import { createRequire } from 'module';
+import { register, Counter, Histogram, Gauge, collectDefaultMetrics } from 'prom-client';
 
 const require = createRequire(import.meta.url);
 const os = require('os');
@@ -364,8 +365,8 @@ class EnhancedMetricsService {
         const duration = Number(endTime - start) / 1000000000; // Convert to seconds
         
         const route = req.route?.path || req.path || 'unknown';
-        const method = req.method;
-        const statusCode = res.statusCode;
+        const {method} = req;
+        const {statusCode} = res;
         const statusClass = `${Math.floor(statusCode / 100)}xx`;
         const userAgentType = this.getUserAgentType(req.get('User-Agent'));
         const contentType = res.get('Content-Type') || 'unknown';

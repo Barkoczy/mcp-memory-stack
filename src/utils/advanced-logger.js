@@ -1,8 +1,8 @@
-import winston from 'winston';
-import DailyRotateFile from 'winston-daily-rotate-file';
 import { createRequire } from 'module';
 import path from 'path';
 import fs from 'fs';
+import DailyRotateFile from 'winston-daily-rotate-file';
+import winston from 'winston';
 
 const require = createRequire(import.meta.url);
 
@@ -73,7 +73,7 @@ const createFileTransport = (filename, level = 'info') => {
     zippedArchive: true,
     maxSize: '20m',
     maxFiles: '30d', // Keep logs for 30 days in production
-    level: level,
+    level,
     format: structuredFormat,
     auditFile: path.join(logsDir, '.audit.json'),
     createSymlink: true,
@@ -275,7 +275,7 @@ enhancedLogger.security = {
 // HTTP request logging utility
 enhancedLogger.http = {
   request: (req, res, duration) => {
-    const statusCode = res.statusCode;
+    const {statusCode} = res;
     const level = statusCode >= 500 ? 'error' : statusCode >= 400 ? 'warn' : 'info';
     
     httpLogger[level]('HTTP Request', {

@@ -4,7 +4,6 @@ import { createRESTAPI } from './core/rest-api.js';
 import { initializeDatabase } from './database/connection.js';
 import { createHealthServer } from './utils/health-server.js';
 import { config } from './config.js';
-
 // Enhanced logging and metrics (2025 standards)
 import enhancedLogger, { gracefulShutdown as shutdownLogger } from './utils/advanced-logger.js';
 import { enhancedMetrics } from './utils/enhanced-metrics.js';
@@ -149,11 +148,11 @@ async function main() {
           const restDuration = restTimer.end({
             operation: 'rest_api_startup',
             status: 'success',
-            port: port
+            port
           });
           
           enhancedLogger.info('✅ REST API server listening', {
-            port: port,
+            port,
             duration: restDuration,
             mode: MODE,
             correlationId
@@ -162,7 +161,7 @@ async function main() {
           restTimer.end({
             operation: 'rest_api_startup',
             status: 'failure',
-            port: port
+            port
           });
           enhancedMetrics.trackError('rest_api_init', 'mcp-memory-server', 'startup', 'critical');
           throw error;
@@ -179,7 +178,7 @@ async function main() {
       enhancedLogger.info('🎉 MCP Memory Server started successfully', {
         totalStartupTime: totalStartupDuration,
         mode: MODE,
-        healthPort: healthPort,
+        healthPort,
         restPort: process.env.PORT || '3333',
         mcpEnabled: process.env.MCP_MODE !== 'false',
         restEnabled: process.env.REST_API_ENABLED !== 'false',
@@ -328,7 +327,7 @@ function setupHealthMonitoring() {
 
     if (lag > 100) { // More than 100ms lag
       enhancedLogger.warn('⚠️ High event loop lag detected', {
-        lag: lag,
+        lag,
         unit: 'milliseconds'
       });
     }
