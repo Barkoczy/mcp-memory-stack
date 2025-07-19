@@ -48,23 +48,82 @@ export function createMCPServer(config) {
   return { memoryService };
 }
 
+function validateJsonRpcRequest(request) {
+  const { jsonrpc, method, id } = request;
+
+  if (!jsonrpc || jsonrpc !== '2.0') {
+    return {
+      jsonrpc: '2.0',
+      id: id || null,
+      error: {
+        code: -32600, // Invalid Request
+        message: 'Invalid JSON-RPC request: missing or invalid jsonrpc version',
+      },
+    };
+  }
+
+  if (!method) {
+    return {
+      jsonrpc: '2.0',
+      id: id || null,
+      error: {
+        code: -32600, // Invalid Request
+        message: 'Invalid JSON-RPC request: missing method',
+      },
+    };
+  }
+
+  return null; // Valid request
+}
+
+function handleValidationError(error, id) {
+  if (error.message.includes('validation') || error.message.includes('required')) {
+    return {
+      jsonrpc: '2.0',
+      id: id || null,
+      error: {
+        code: -32602, // Invalid params
+        message: `Invalid parameters: ${error.message}`,
+      },
+    };
+  }
+  throw error; // Re-throw non-validation errors
+}
+
 function handleMCPRequest(request, memoryService, config) {
   const { method, params, id } = request;
 
-  switch (method) {
-    case 'initialize':
-      return handleInitialize(id, config);
+  // Validate JSON-RPC structure
+  const validationError = validateJsonRpcRequest(request);
+  if (validationError) {
+    return validationError;
+  }
 
-    case 'tools/list':
-    case 'listTools':
-      return handleToolsList(id);
+  try {
+    switch (method) {
+      case 'initialize':
+        return handleInitialize(id, config);
 
-    case 'tools/call':
-    case 'callTool':
-      return handleToolCall(params, id, memoryService);
+      case 'tools/list':
+      case 'listTools':
+        return handleToolsList(id);
 
-    default:
-      throw new Error(`Unknown method: ${method}`);
+      case 'tools/call':
+      case 'callTool':
+        return handleToolCall(params, id, memoryService);
+
+      default:
+        return {
+          jsonrpc: '2.0',
+          id: id || null,
+          error: {
+            code: -32601, // Method not found
+            message: `Method not found: ${method}`,
+          },
+        };
+    }
+  } catch (error) {
+    return handleValidationError(error, id);
   }
 }
 
@@ -73,15 +132,17 @@ function handleInitialize(id, config) {
     jsonrpc: '2.0',
     id,
     result: {
-      name: config.server.name,
-      version: config.server.version,
-      description: config.server.description,
       protocolVersion: '2024-11-05',
       capabilities: {
         tools: true,
         resources: false,
         prompts: false,
         sampling: false,
+      },
+      serverInfo: {
+        name: config.server?.name || 'MCP Memory Server',
+        version: config.server?.version || '2.0.0',
+        description: config.server?.description || 'Memory management with semantic search',
       },
     },
   };
@@ -201,8 +262,12 @@ function handleToolsList(id) {
 }
 
 function handleToolCall(params, id, memoryService) {
-  const toolName = params.name || params.tool;
-  const toolParams = params.arguments || params.params || {};
+  const toolName = params?.name || params?.tool;
+  const toolParams = params?.arguments || params?.params || {};
+
+  if (!toolName) {
+    throw new Error('Tool name is required for validation');
+  }
 
   switch (toolName) {
     case 'memory_create':
@@ -220,6 +285,14 @@ function handleToolCall(params, id, memoryService) {
 }
 
 async function handleMemoryCreate(toolParams, id, memoryService) {
+  // Validate required parameters
+  if (!toolParams.type) {
+    throw new Error('type is required for validation');
+  }
+  if (!toolParams.content) {
+    throw new Error('content is required for validation');
+  }
+
   const created = await memoryService.create(toolParams);
   return {
     jsonrpc: '2.0',

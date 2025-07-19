@@ -155,6 +155,14 @@ async function main() {
     logStartupInfo();
 
     await initializeDatabaseWithTracking();
+
+    // In stdio mode, only start MCP server without HTTP servers
+    if (process.env.MCP_MODE === 'stdio') {
+      createMCPServer(config[MODE]);
+      logger.info('✅ MCP server started in stdio mode');
+      return;
+    }
+
     startHealthServer();
     startMCPServerIfEnabled();
     startRESTAPIIfEnabled();

@@ -45,7 +45,8 @@ export class MCPClient extends EventEmitter {
 
   sendRequest(request) {
     return new Promise((resolve, reject) => {
-      const id = ++this.requestId;
+      // Use provided ID if present, otherwise generate new one
+      const id = request.id !== undefined ? request.id : ++this.requestId;
       const requestWithId = { ...request, id };
 
       // Store pending request
@@ -66,21 +67,36 @@ export class MCPClient extends EventEmitter {
 
   sendRaw(data) {
     return new Promise((resolve, reject) => {
-      const id = ++this.requestId;
-
-      // Store pending request
-      this.pendingRequests.set(id, { resolve, reject });
-
-      // Send raw data
-      this.process.stdin.write(`${data}\n`);
-
-      // Timeout after 5 seconds
-      setTimeout(() => {
-        if (this.pendingRequests.has(id)) {
-          this.pendingRequests.delete(id);
-          reject(new Error('Request timeout'));
+      try {
+        // Try to parse the raw data to extract or add ID
+        let parsedData;
+        try {
+          parsedData = JSON.parse(data);
+        } catch (e) {
+          // If it's not valid JSON, reject immediately
+          return reject(new Error('Raw data must be valid JSON'));
         }
-      }, 5000);
+
+        // Use existing ID or generate new one
+        const id = parsedData.id !== undefined ? parsedData.id : ++this.requestId;
+        parsedData.id = id;
+
+        // Store pending request
+        this.pendingRequests.set(id, { resolve, reject });
+
+        // Send updated data
+        this.process.stdin.write(`${JSON.stringify(parsedData)}\n`);
+
+        // Timeout after 5 seconds
+        setTimeout(() => {
+          if (this.pendingRequests.has(id)) {
+            this.pendingRequests.delete(id);
+            reject(new Error('Request timeout'));
+          }
+        }, 5000);
+      } catch (error) {
+        reject(error);
+      }
     });
   }
 
