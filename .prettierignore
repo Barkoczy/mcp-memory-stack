@@ -1,0 +1,102 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Production builds
+dist/
+build/
+out/
+
+# Testing
+coverage/
+.nyc_output
+
+# Logs
+*.log
+logs/
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Optional cache directories
+.npm
+.cache
+.parcel-cache
+.eslintcache
+.prettiercache
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Model files (large binary files)
+models/Xenova/
+models/**/*.onnx
+models/**/*.bin
+
+# Docker data volumes
+postgres-data/
+redis-data/
+grafana-data/
+prometheus-data/
+monitoring/data/
+
+# Environment files
+.env
+.env.*
+
+# SSL certificates
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# Secrets
+secrets/*.txt
+secrets/*.key
+
+# Package manager files
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Database files
+*.sqlite
+*.sqlite3
+*.db
+*.sql
+*.dump
+
+# Backup files
+*.backup
+*.bak
+*.orig
+
+# Generated documentation
+docs/generated/
+
+# Test outputs
+test-results/
+test-output/
+playwright-report/
