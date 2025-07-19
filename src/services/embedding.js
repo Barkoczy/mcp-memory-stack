@@ -1,4 +1,5 @@
 import { pipeline } from '@xenova/transformers';
+
 import { logger } from '../utils/logger.js';
 
 export class EmbeddingService {

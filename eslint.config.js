@@ -102,7 +102,7 @@ export default [
         'error',
         {
           groups: ['builtin', 'external', 'internal', 'parent', 'sibling', 'index'],
-          'newlines-between': 'never',
+          'newlines-between': 'always',
         },
       ],
       'import/newline-after-import': 'error',

@@ -1,4 +1,5 @@
 import { spawn } from 'child_process';
+
 import { createMCPClient } from '../helpers/mcp-client.js';
 
 describe('MCP Protocol E2E Tests', () => {

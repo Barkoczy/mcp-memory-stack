@@ -1,5 +1,6 @@
 /* global setImmediate */
 import { createRequire } from 'module';
+
 import { register, Counter, Histogram, Gauge, collectDefaultMetrics } from 'prom-client';
 
 const require = createRequire(import.meta.url);
@@ -10,30 +11,30 @@ class EnhancedMetricsService {
   constructor() {
     // Clear any existing metrics
     register.clear();
-    
+
     // Collect default Node.js metrics (CPU, memory, GC, etc.)
-    collectDefaultMetrics({ 
+    collectDefaultMetrics({
       register,
       prefix: 'mcp_memory_server_',
       timeout: 5000,
-      gcDurationBuckets: [0.001, 0.01, 0.1, 1, 2, 5]
+      gcDurationBuckets: [0.001, 0.01, 0.1, 1, 2, 5],
     });
 
     // Business Logic Metrics
     this.initBusinessMetrics();
-    
+
     // Technical Performance Metrics
     this.initPerformanceMetrics();
-    
+
     // Security and Observability Metrics
     this.initSecurityMetrics();
-    
+
     // Infrastructure Metrics
     this.initInfrastructureMetrics();
-    
+
     // OpenTelemetry-compatible metrics
     this.initOpenTelemetryMetrics();
-    
+
     // Start collecting enhanced system metrics
     this.startEnhancedSystemMetrics();
   }
@@ -44,7 +45,7 @@ class EnhancedMetricsService {
       name: 'mcp_memory_operations_total',
       help: 'Total number of memory operations performed',
       labelNames: ['operation', 'status', 'type', 'user_id', 'source'],
-      registers: [register]
+      registers: [register],
     });
 
     this.memoryOperationDuration = new Histogram({
@@ -52,7 +53,7 @@ class EnhancedMetricsService {
       help: 'Duration of memory operations in seconds',
       labelNames: ['operation', 'type'],
       buckets: [0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10],
-      registers: [register]
+      registers: [register],
     });
 
     // Embedding metrics with model tracking
@@ -60,7 +61,7 @@ class EnhancedMetricsService {
       name: 'mcp_embedding_operations_total',
       help: 'Total number of embedding operations',
       labelNames: ['model', 'status', 'dimensions', 'cache_hit'],
-      registers: [register]
+      registers: [register],
     });
 
     this.embeddingDuration = new Histogram({
@@ -68,7 +69,7 @@ class EnhancedMetricsService {
       help: 'Time spent generating embeddings',
       labelNames: ['model', 'dimensions'],
       buckets: [0.01, 0.05, 0.1, 0.5, 1, 2, 5, 10, 30],
-      registers: [register]
+      registers: [register],
     });
 
     // Search operations with semantic tracking
@@ -76,7 +77,7 @@ class EnhancedMetricsService {
       name: 'mcp_search_operations_total',
       help: 'Total number of search operations',
       labelNames: ['type', 'status', 'similarity_threshold', 'result_count'],
-      registers: [register]
+      registers: [register],
     });
 
     this.searchDuration = new Histogram({
@@ -84,7 +85,7 @@ class EnhancedMetricsService {
       help: 'Duration of search operations',
       labelNames: ['type', 'similarity_threshold'],
       buckets: [0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 2],
-      registers: [register]
+      registers: [register],
     });
 
     this.searchResultCount = new Histogram({
@@ -92,7 +93,7 @@ class EnhancedMetricsService {
       help: 'Number of results returned by search operations',
       labelNames: ['type'],
       buckets: [0, 1, 5, 10, 25, 50, 100, 250, 500, 1000],
-      registers: [register]
+      registers: [register],
     });
   }
 
@@ -102,7 +103,7 @@ class EnhancedMetricsService {
       name: 'mcp_http_requests_total',
       help: 'Total number of HTTP requests',
       labelNames: ['method', 'route', 'status_code', 'user_agent_type', 'content_type'],
-      registers: [register]
+      registers: [register],
     });
 
     this.httpDuration = new Histogram({
@@ -110,7 +111,7 @@ class EnhancedMetricsService {
       help: 'Duration of HTTP requests in seconds',
       labelNames: ['method', 'route', 'status_class'],
       buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10],
-      registers: [register]
+      registers: [register],
     });
 
     this.httpRequestSize = new Histogram({
@@ -118,7 +119,7 @@ class EnhancedMetricsService {
       help: 'Size of HTTP requests in bytes',
       labelNames: ['method', 'route'],
       buckets: [10, 100, 1000, 10000, 100000, 1000000],
-      registers: [register]
+      registers: [register],
     });
 
     this.httpResponseSize = new Histogram({
@@ -126,7 +127,7 @@ class EnhancedMetricsService {
       help: 'Size of HTTP responses in bytes',
       labelNames: ['method', 'route', 'status_class'],
       buckets: [10, 100, 1000, 10000, 100000, 1000000],
-      registers: [register]
+      registers: [register],
     });
 
     // MCP Protocol metrics
@@ -134,7 +135,7 @@ class EnhancedMetricsService {
       name: 'mcp_protocol_messages_total',
       help: 'Total number of MCP protocol messages',
       labelNames: ['type', 'method', 'status'],
-      registers: [register]
+      registers: [register],
     });
 
     this.mcpMessageDuration = new Histogram({
@@ -142,7 +143,7 @@ class EnhancedMetricsService {
       help: 'Duration of MCP message processing',
       labelNames: ['type', 'method'],
       buckets: [0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1],
-      registers: [register]
+      registers: [register],
     });
   }
 
@@ -152,7 +153,7 @@ class EnhancedMetricsService {
       name: 'mcp_auth_attempts_total',
       help: 'Total number of authentication attempts',
       labelNames: ['method', 'status', 'user_type', 'ip_type'],
-      registers: [register]
+      registers: [register],
     });
 
     this.authDuration = new Histogram({
@@ -160,7 +161,7 @@ class EnhancedMetricsService {
       help: 'Duration of authentication operations',
       labelNames: ['method', 'status'],
       buckets: [0.01, 0.05, 0.1, 0.5, 1, 2, 5],
-      registers: [register]
+      registers: [register],
     });
 
     // Rate limiting metrics
@@ -168,7 +169,7 @@ class EnhancedMetricsService {
       name: 'mcp_rate_limit_hits_total',
       help: 'Total number of rate limit hits',
       labelNames: ['endpoint', 'limit_type', 'user_type'],
-      registers: [register]
+      registers: [register],
     });
 
     // Security events
@@ -176,7 +177,7 @@ class EnhancedMetricsService {
       name: 'mcp_security_events_total',
       help: 'Total number of security events',
       labelNames: ['event_type', 'severity', 'source'],
-      registers: [register]
+      registers: [register],
     });
   }
 
@@ -186,14 +187,14 @@ class EnhancedMetricsService {
       name: 'mcp_db_connections_active',
       help: 'Number of active database connections',
       labelNames: ['pool', 'status'],
-      registers: [register]
+      registers: [register],
     });
 
     this.dbQueries = new Counter({
       name: 'mcp_db_queries_total',
       help: 'Total number of database queries',
       labelNames: ['operation', 'table', 'status', 'prepared'],
-      registers: [register]
+      registers: [register],
     });
 
     this.dbQueryDuration = new Histogram({
@@ -201,14 +202,14 @@ class EnhancedMetricsService {
       help: 'Duration of database queries',
       labelNames: ['operation', 'table'],
       buckets: [0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1],
-      registers: [register]
+      registers: [register],
     });
 
     this.dbConnectionPool = new Gauge({
       name: 'mcp_db_connection_pool_size',
       help: 'Database connection pool metrics',
       labelNames: ['pool', 'state'],
-      registers: [register]
+      registers: [register],
     });
 
     // Cache metrics with TTL tracking
@@ -216,7 +217,7 @@ class EnhancedMetricsService {
       name: 'mcp_cache_operations_total',
       help: 'Total number of cache operations',
       labelNames: ['operation', 'cache_type', 'hit'],
-      registers: [register]
+      registers: [register],
     });
 
     this.cacheDuration = new Histogram({
@@ -224,21 +225,21 @@ class EnhancedMetricsService {
       help: 'Duration of cache operations',
       labelNames: ['operation', 'cache_type'],
       buckets: [0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1],
-      registers: [register]
+      registers: [register],
     });
 
     this.cacheSize = new Gauge({
       name: 'mcp_cache_size_bytes',
       help: 'Size of cache in bytes',
       labelNames: ['cache_type'],
-      registers: [register]
+      registers: [register],
     });
 
     this.cacheEntries = new Gauge({
       name: 'mcp_cache_entries_count',
       help: 'Number of entries in cache',
       labelNames: ['cache_type'],
-      registers: [register]
+      registers: [register],
     });
   }
 
@@ -249,7 +250,7 @@ class EnhancedMetricsService {
       help: 'Duration of traced spans',
       labelNames: ['span_name', 'span_kind', 'status_code'],
       buckets: [0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 10],
-      registers: [register]
+      registers: [register],
     });
 
     // Trace metrics
@@ -257,7 +258,7 @@ class EnhancedMetricsService {
       name: 'mcp_traces_total',
       help: 'Total number of traces',
       labelNames: ['service_name', 'operation'],
-      registers: [register]
+      registers: [register],
     });
 
     // Error tracking with OpenTelemetry semantics
@@ -265,7 +266,7 @@ class EnhancedMetricsService {
       name: 'mcp_errors_total',
       help: 'Total number of errors',
       labelNames: ['error_type', 'service_name', 'operation', 'severity'],
-      registers: [register]
+      registers: [register],
     });
   }
 
@@ -290,7 +291,7 @@ class EnhancedMetricsService {
           name: 'mcp_cpu_usage_microseconds_total',
           help: 'Total CPU usage in microseconds',
           labelNames: ['type'],
-          registers: [register]
+          registers: [register],
         });
       }
       this.cpuUsageGauge.set({ type: 'user' }, cpuUsage.user);
@@ -304,7 +305,7 @@ class EnhancedMetricsService {
           this.eventLoopLag = new Gauge({
             name: 'mcp_event_loop_lag_milliseconds',
             help: 'Event loop lag in milliseconds',
-            registers: [register]
+            registers: [register],
           });
         }
         this.eventLoopLag.set(lag);
@@ -318,7 +319,7 @@ class EnhancedMetricsService {
             name: 'mcp_system_load_average',
             help: 'System load average',
             labelNames: ['period'],
-            registers: [register]
+            registers: [register],
           });
         }
         this.loadAverage.set({ period: '1m' }, loadAvg[0]);
@@ -340,10 +341,10 @@ class EnhancedMetricsService {
           name: 'mcp_memories_total_count',
           help: 'Total number of memories stored',
           labelNames: ['type'],
-          registers: [register]
+          registers: [register],
         });
       }
-      
+
       // This would be replaced with actual database queries
       // this.memoryCount.set({ type: 'all' }, await this.getMemoryCount());
     } catch (error) {
@@ -355,48 +356,61 @@ class EnhancedMetricsService {
   middleware() {
     return (req, res, next) => {
       const start = process.hrtime.bigint();
-      const startTime = Date.now();
+      const startTime = Date.now(); // Request start timestamp for audit and timing metrics
 
       // Track request size
       const requestSize = parseInt(req.get('content-length') || '0', 10);
-      
+
       res.on('finish', () => {
         const endTime = process.hrtime.bigint();
         const duration = Number(endTime - start) / 1000000000; // Convert to seconds
-        
+
         const route = req.route?.path || req.path || 'unknown';
-        const {method} = req;
-        const {statusCode} = res;
+        const { method } = req;
+        const { statusCode } = res;
         const statusClass = `${Math.floor(statusCode / 100)}xx`;
         const userAgentType = this.getUserAgentType(req.get('User-Agent'));
         const contentType = res.get('Content-Type') || 'unknown';
         const responseSize = parseInt(res.get('content-length') || '0', 10);
 
-        // Track metrics
+        // Calculate timing metrics using startTime
+        const totalTime = Date.now() - startTime; // Total time in milliseconds
+
+        // Track metrics with timing
         this.httpRequests.inc({
           method,
           route,
           status_code: statusCode,
           user_agent_type: userAgentType,
-          content_type: contentType
+          content_type: contentType,
         });
 
-        this.httpDuration.observe({
-          method,
-          route,
-          status_class: statusClass
-        }, duration);
+        // Add request timing metadata for audit
+        req.requestStartTime = startTime;
+        req.requestTotalTime = totalTime;
+
+        this.httpDuration.observe(
+          {
+            method,
+            route,
+            status_class: statusClass,
+          },
+          duration
+        );
 
         if (requestSize > 0) {
           this.httpRequestSize.observe({ method, route }, requestSize);
         }
 
         if (responseSize > 0) {
-          this.httpResponseSize.observe({
-            method,
-            route,
-            status_class: statusClass
-          }, responseSize);
+          this.httpResponseSize.observe(
+            {
+              method,
+              route,
+              status_class: statusClass,
+            },
+            responseSize
+          );
         }
       });
 
@@ -406,7 +420,7 @@ class EnhancedMetricsService {
 
   getUserAgentType(userAgent) {
     if (!userAgent) return 'unknown';
-    
+
     const ua = userAgent.toLowerCase();
     if (ua.includes('bot') || ua.includes('crawler') || ua.includes('spider')) {
       return 'bot';
@@ -439,14 +453,17 @@ class EnhancedMetricsService {
       status: success ? 'success' : 'failure',
       type: metadata.type || 'unknown',
       user_id: metadata.userId || 'anonymous',
-      source: metadata.source || 'unknown'
+      source: metadata.source || 'unknown',
     });
 
     if (duration !== undefined) {
-      this.memoryOperationDuration.observe({
-        operation,
-        type: metadata.type || 'unknown'
-      }, duration);
+      this.memoryOperationDuration.observe(
+        {
+          operation,
+          type: metadata.type || 'unknown',
+        },
+        duration
+      );
     }
   }
 
@@ -455,14 +472,17 @@ class EnhancedMetricsService {
       model,
       status: success ? 'success' : 'failure',
       dimensions: dimensions.toString(),
-      cache_hit: cacheHit ? 'true' : 'false'
+      cache_hit: cacheHit ? 'true' : 'false',
     });
 
     if (duration !== undefined) {
-      this.embeddingDuration.observe({
-        model,
-        dimensions: dimensions.toString()
-      }, duration);
+      this.embeddingDuration.observe(
+        {
+          model,
+          dimensions: dimensions.toString(),
+        },
+        duration
+      );
     }
   }
 
@@ -471,14 +491,17 @@ class EnhancedMetricsService {
       type,
       status: success ? 'success' : 'failure',
       similarity_threshold: similarityThreshold?.toString() || 'unknown',
-      result_count: resultCount?.toString() || 'unknown'
+      result_count: resultCount?.toString() || 'unknown',
     });
 
     if (duration !== undefined) {
-      this.searchDuration.observe({
-        type,
-        similarity_threshold: similarityThreshold?.toString() || 'unknown'
-      }, duration);
+      this.searchDuration.observe(
+        {
+          type,
+          similarity_threshold: similarityThreshold?.toString() || 'unknown',
+        },
+        duration
+      );
     }
 
     if (resultCount !== undefined) {
@@ -491,7 +514,7 @@ class EnhancedMetricsService {
       operation,
       table,
       status: success ? 'success' : 'failure',
-      prepared: prepared ? 'true' : 'false'
+      prepared: prepared ? 'true' : 'false',
     });
 
     if (duration !== undefined) {
@@ -503,7 +526,7 @@ class EnhancedMetricsService {
     this.cacheOperations.inc({
       operation,
       cache_type: cacheType,
-      hit: hit ? 'true' : 'false'
+      hit: hit ? 'true' : 'false',
     });
 
     if (duration !== undefined) {
@@ -516,14 +539,17 @@ class EnhancedMetricsService {
       method,
       status: success ? 'success' : 'failure',
       user_type: userType,
-      ip_type: ipType
+      ip_type: ipType,
     });
 
     if (duration !== undefined) {
-      this.authDuration.observe({
-        method,
-        status: success ? 'success' : 'failure'
-      }, duration);
+      this.authDuration.observe(
+        {
+          method,
+          status: success ? 'success' : 'failure',
+        },
+        duration
+      );
     }
   }
 
@@ -531,7 +557,7 @@ class EnhancedMetricsService {
     this.mcpMessages.inc({
       type,
       method,
-      status: success ? 'success' : 'failure'
+      status: success ? 'success' : 'failure',
     });
 
     if (duration !== undefined) {
@@ -543,7 +569,7 @@ class EnhancedMetricsService {
     this.securityEvents.inc({
       event_type: eventType,
       severity,
-      source
+      source,
     });
   }
 
@@ -552,7 +578,7 @@ class EnhancedMetricsService {
       error_type: errorType,
       service_name: serviceName,
       operation,
-      severity
+      severity,
     });
   }
 

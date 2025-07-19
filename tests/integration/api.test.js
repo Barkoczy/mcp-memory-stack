@@ -1,5 +1,6 @@
 // Integration API tests
 import request from 'supertest';
+
 import { createRESTAPI } from '../../src/core/rest-api.js';
 
 describe('REST API Integration Tests', () => {

@@ -1,4 +1,5 @@
 import jwt from 'jsonwebtoken';
+
 import { logger } from './logger.js';
 
 export function authenticate(config) {

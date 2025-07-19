@@ -1,6 +1,7 @@
 import { createRequire } from 'module';
 import path from 'path';
 import fs from 'fs';
+
 import DailyRotateFile from 'winston-daily-rotate-file';
 import winston from 'winston';
 
@@ -19,7 +20,7 @@ const levels = {
   warn: 2,
   info: 3,
   debug: 4,
-  trace: 5
+  trace: 5,
 };
 
 // Colors for different log levels
@@ -29,7 +30,7 @@ const colors = {
   warn: 'yellow',
   info: 'cyan',
   debug: 'blue',
-  trace: 'magenta'
+  trace: 'magenta',
 };
 
 winston.addColors(colors);
@@ -37,11 +38,11 @@ winston.addColors(colors);
 // Custom format for structured JSON logging (2025 standard)
 const structuredFormat = winston.format.combine(
   winston.format.timestamp({
-    format: () => new Date().toISOString() // ISO 8601 UTC format
+    format: () => new Date().toISOString(), // ISO 8601 UTC format
   }),
   winston.format.errors({ stack: true }),
   winston.format.metadata({
-    fillExcept: ['message', 'level', 'timestamp', 'label']
+    fillExcept: ['message', 'level', 'timestamp', 'label'],
   }),
   winston.format.json()
 );
@@ -50,17 +51,17 @@ const structuredFormat = winston.format.combine(
 const consoleFormat = winston.format.combine(
   winston.format.colorize({ all: true }),
   winston.format.timestamp({
-    format: () => new Date().toISOString()
+    format: () => new Date().toISOString(),
   }),
   winston.format.errors({ stack: true }),
   winston.format.printf(({ timestamp, level, message, ...meta }) => {
     let logMessage = `[${timestamp}] [${level.toUpperCase()}] ${message}`;
-    
+
     // Add metadata if present
     if (Object.keys(meta).length > 0) {
       logMessage += ` ${JSON.stringify(meta, null, 2)}`;
     }
-    
+
     return logMessage;
   })
 );
@@ -77,7 +78,7 @@ const createFileTransport = (filename, level = 'info') => {
     format: structuredFormat,
     auditFile: path.join(logsDir, '.audit.json'),
     createSymlink: true,
-    symlinkName: filename.replace('-%DATE%', '-current')
+    symlinkName: filename.replace('-%DATE%', '-current'),
   });
 };
 
@@ -102,7 +103,7 @@ const metricsTransport = createFileTransport('metrics-%DATE%.log', 'info');
 // Console transport for development
 const consoleTransport = new winston.transports.Console({
   level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
-  format: process.env.NODE_ENV === 'production' ? structuredFormat : consoleFormat
+  format: process.env.NODE_ENV === 'production' ? structuredFormat : consoleFormat,
 });
 
 // Create the main logger
@@ -115,35 +116,30 @@ const logger = winston.createLogger({
     version: process.env.npm_package_version || '2.0.0',
     environment: process.env.NODE_ENV || 'development',
     hostname: process.env.HOSTNAME || require('os').hostname(),
-    pid: process.pid
+    pid: process.pid,
   },
-  transports: [
-    consoleTransport,
-    combinedTransport,
-    errorTransport,
-    appTransport
-  ],
+  transports: [consoleTransport, combinedTransport, errorTransport, appTransport],
   // Handle uncaught exceptions and rejections
   exceptionHandlers: [
     new winston.transports.File({
       filename: path.join(logsDir, 'exceptions.log'),
-      format: structuredFormat
-    })
+      format: structuredFormat,
+    }),
   ],
   rejectionHandlers: [
     new winston.transports.File({
       filename: path.join(logsDir, 'rejections.log'),
-      format: structuredFormat
-    })
+      format: structuredFormat,
+    }),
   ],
-  exitOnError: false
+  exitOnError: false,
 });
 
 // Child loggers for specific components
 const createChildLogger = (component, metadata = {}) => {
   return logger.child({
     component,
-    ...metadata
+    ...metadata,
   });
 };
 
@@ -173,7 +169,7 @@ try {
 // Enhanced logging methods with correlation ID support
 const enhancedLogger = {
   ...logger,
-  
+
   // Wrap method to add correlation ID automatically
   withCorrelationId: (correlationId, fn) => {
     if (correlationIdStore) {
@@ -182,7 +178,7 @@ const enhancedLogger = {
       return fn();
     }
   },
-  
+
   // Get current correlation ID
   getCorrelationId: () => {
     if (correlationIdStore) {
@@ -191,18 +187,18 @@ const enhancedLogger = {
     }
     return null;
   },
-  
+
   // Enhanced logging methods that include correlation ID
   logWithContext: (level, message, meta = {}) => {
     const correlationId = enhancedLogger.getCorrelationId();
     const enrichedMeta = {
       ...meta,
       ...(correlationId && { correlationId }),
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     };
-    
+
     logger[level](message, enrichedMeta);
-  }
+  },
 };
 
 // Override standard methods to include context
@@ -214,24 +210,24 @@ const enhancedLogger = {
 
 // Performance logging utility
 enhancedLogger.performance = {
-  start: (operation) => {
+  start: operation => {
     const startTime = process.hrtime.bigint();
     return {
       end: (additionalMeta = {}) => {
         const endTime = process.hrtime.bigint();
         const duration = Number(endTime - startTime) / 1000000; // Convert to milliseconds
-        
+
         metricsLogger.info('Performance metric', {
           operation,
           duration,
           unit: 'ms',
-          ...additionalMeta
+          ...additionalMeta,
         });
-        
+
         return duration;
-      }
+      },
     };
-  }
+  },
 };
 
 // Security logging utilities
@@ -241,43 +237,43 @@ enhancedLogger.security = {
       event: 'auth_success',
       userId,
       method,
-      ...meta
+      ...meta,
     });
   },
-  
+
   authFailure: (reason, method, meta = {}) => {
     securityLogger.warn('Authentication failed', {
       event: 'auth_failure',
       reason,
       method,
-      ...meta
+      ...meta,
     });
   },
-  
+
   accessDenied: (resource, userId, meta = {}) => {
     securityLogger.warn('Access denied', {
       event: 'access_denied',
       resource,
       userId,
-      ...meta
+      ...meta,
     });
   },
-  
+
   suspiciousActivity: (activity, meta = {}) => {
     securityLogger.error('Suspicious activity detected', {
       event: 'suspicious_activity',
       activity,
-      ...meta
+      ...meta,
     });
-  }
+  },
 };
 
 // HTTP request logging utility
 enhancedLogger.http = {
   request: (req, res, duration) => {
-    const {statusCode} = res;
+    const { statusCode } = res;
     const level = statusCode >= 500 ? 'error' : statusCode >= 400 ? 'warn' : 'info';
-    
+
     httpLogger[level]('HTTP Request', {
       method: req.method,
       url: req.url,
@@ -285,17 +281,17 @@ enhancedLogger.http = {
       duration,
       userAgent: req.get('User-Agent'),
       ip: req.ip || req.connection.remoteAddress,
-      referrer: req.get('Referrer')
+      referrer: req.get('Referrer'),
     });
-  }
+  },
 };
 
 // Graceful shutdown handler
 const gracefulShutdown = () => {
   logger.info('Shutting down logger...');
-  
+
   // Wait for all transports to finish writing
-  return new Promise((resolve) => {
+  return new Promise(resolve => {
     logger.on('finish', resolve);
     logger.end();
   });
@@ -303,13 +299,13 @@ const gracefulShutdown = () => {
 
 // Export everything
 export default enhancedLogger;
-export { 
-  logger, 
-  httpLogger, 
-  dbLogger, 
-  mcpLogger, 
-  securityLogger, 
+export {
+  logger,
+  httpLogger,
+  dbLogger,
+  mcpLogger,
+  securityLogger,
   metricsLogger,
   gracefulShutdown,
-  correlationIdStore
+  correlationIdStore,
 };

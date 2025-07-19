@@ -1,7 +1,9 @@
 import { EventEmitter } from 'events';
+
 import { query, getClient } from '../database/connection.js';
 import { CacheService } from '../utils/cache.js';
 import { logger } from '../utils/logger.js';
+
 import { EmbeddingService } from './embedding.js';
 
 export class MemoryService extends EventEmitter {

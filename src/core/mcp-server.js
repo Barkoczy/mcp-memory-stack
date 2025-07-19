@@ -1,4 +1,5 @@
 import readline from 'readline';
+
 import { MemoryService } from '../services/memory.js';
 import { logger } from '../utils/logger.js';
 

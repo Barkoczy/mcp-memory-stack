@@ -1,4 +1,5 @@
 import http from 'http';
+
 import { logger } from './logger.js';
 
 export function createHealthServer(port = 3334) {
