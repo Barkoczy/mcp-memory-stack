@@ -118,15 +118,22 @@ export class MemoryService extends EventEmitter {
 
     const memories = result.rows.map(row => this.formatMemory(row));
 
+    // Format search response
+    const response = {
+      memories,
+      query: searchQuery,
+      total: memories.length
+    };
+
     // Cache results
-    await this.cache.set(cacheKey, memories, 300); // 5 minutes
+    await this.cache.set(cacheKey, response, 300); // 5 minutes
 
     logger.debug('Search completed', {
       query: searchQuery.substring(0, 50),
       results: memories.length,
     });
 
-    return memories;
+    return response;
   }
 
   list(params = {}) {
@@ -221,7 +228,9 @@ export class MemoryService extends EventEmitter {
     const { limit = 20, offset = 0 } = params;
     return {
       memories: rows.map(row => this.formatMemory(row)),
-      pagination: { total, limit, offset, pages: Math.ceil(total / limit) },
+      total,
+      limit,
+      offset,
     };
   }
 

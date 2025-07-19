@@ -43,12 +43,13 @@ async function initializeSchema() {
     // Enable extensions
     await client.query(`
       CREATE EXTENSION IF NOT EXISTS "vector";
+      CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
     `);
 
     // Create memories table
     await client.query(`
       CREATE TABLE IF NOT EXISTS memories (
-        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         type VARCHAR(255) NOT NULL,
         content JSONB NOT NULL,
         source VARCHAR(255),
@@ -96,7 +97,7 @@ async function initializeSchema() {
     // Create memory relationships table
     await client.query(`
       CREATE TABLE IF NOT EXISTS memory_links (
-        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         source_id UUID NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
         target_id UUID NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
         relationship VARCHAR(50) NOT NULL,

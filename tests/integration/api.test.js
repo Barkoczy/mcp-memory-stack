@@ -2,12 +2,17 @@
 import request from 'supertest';
 
 import { createRESTAPI } from '../../src/core/rest-api.js';
+import { initializeDatabase } from '../../src/database/connection.js';
 
 describe('REST API Integration Tests', () => {
   let app;
   let server;
 
   beforeAll(async () => {
+    // Initialize database first
+    process.env.DATABASE_URL = 'postgresql://mcp_user:mcp_secure_password_2024@localhost:5432/mcp_memory_test';
+    await initializeDatabase();
+    
     // Create test app instance
     const { app: testApp, server: testServer } = await createRESTAPI({
       mode: 'test',
@@ -31,6 +36,18 @@ describe('REST API Integration Tests', () => {
       },
       monitoring: {
         metrics: false,
+      },
+      embedding: {
+        model: 'Xenova/all-MiniLM-L6-v2',
+        dimension: 384,
+        maxTokens: 512,
+        cacheSize: 100,
+        pooling: 'mean',
+        normalize: true,
+        cache: false,
+      },
+      server: {
+        version: '2.0.0',
       },
     });
     app = testApp;
@@ -83,7 +100,13 @@ describe('REST API Integration Tests', () => {
         confidence: 0.9,
       };
 
-      const response = await request(app).post('/api/v1/memories').send(memoryData).expect(201);
+      const response = await request(app).post('/api/v1/memories').send(memoryData);
+      
+      if (response.status !== 201) {
+        console.log('Error response:', response.status, response.body);
+      }
+      
+      expect(response.status).toBe(201);
 
       expect(response.body).toMatchObject({
         id: expect.any(String),

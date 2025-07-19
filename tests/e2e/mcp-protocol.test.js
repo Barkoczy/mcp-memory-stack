@@ -14,6 +14,7 @@ describe('MCP Protocol E2E Tests', () => {
         ...process.env,
         NODE_ENV: 'test',
         MCP_MODE: 'stdio',
+        DATABASE_URL: 'postgresql://mcp_user:mcp_secure_password_2024@localhost:5432/mcp_memory_test',
       },
     });
 
