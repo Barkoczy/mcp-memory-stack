@@ -307,8 +307,9 @@ export class MemoryService extends EventEmitter {
 
     const text = this.contentToText(content);
     const embedding = await this.embeddingService.generateEmbedding(text);
-    updateFields.push(`embedding = $${paramIndex}`);
-    updateValues.push(embedding);
+    const vectorString = `[${embedding.join(',')}]`;
+    updateFields.push(`embedding = $${paramIndex}::vector`);
+    updateValues.push(vectorString);
     paramIndex++;
 
     return paramIndex;

@@ -250,7 +250,8 @@ describe('REST API Integration Tests', () => {
     });
 
     it('should return 404 for non-existent memory', async () => {
-      await request(app).get('/api/v1/memories/non-existent-id').expect(404);
+      // Use a valid UUID format that doesn't exist
+      await request(app).get('/api/v1/memories/00000000-0000-0000-0000-000000000000').expect(404);
     });
 
     it('should return 404 for unknown endpoints', async () => {

@@ -9,7 +9,7 @@ import { logger } from '../utils/logger.js';
 import { authenticate } from '../utils/auth.js';
 import { metrics } from '../utils/metrics.js';
 
-export function createRESTAPI(config, port = 3333) {
+export function createRESTAPI(config, port = null) {
   const app = express();
   const memoryService = new MemoryService(config);
 
@@ -18,7 +18,9 @@ export function createRESTAPI(config, port = 3333) {
   setupAPIRoutes(app, memoryService, config);
   setupErrorHandling(app);
 
-  return startServer(app, port, memoryService);
+  // Use port from config if not explicitly provided
+  const actualPort = port !== null ? port : config.api?.port || 3333;
+  return startServer(app, actualPort, memoryService);
 }
 
 function setupMiddleware(app, config) {
@@ -136,7 +138,13 @@ function setupMemoryRoutes(router, memoryService) {
 
   router.get('/memories/search', async (req, res) => {
     try {
-      const results = await memoryService.search(req.query);
+      // Parse tags from comma-separated string to array
+      const params = { ...req.query };
+      if (params.tags && typeof params.tags === 'string') {
+        params.tags = params.tags.split(',').map(tag => tag.trim());
+      }
+
+      const results = await memoryService.search(params);
       res.json(results);
     } catch (error) {
       logger.error('Search failed:', error);
@@ -146,7 +154,13 @@ function setupMemoryRoutes(router, memoryService) {
 
   router.get('/memories', async (req, res) => {
     try {
-      const results = await memoryService.list(req.query);
+      // Parse tags from comma-separated string to array
+      const params = { ...req.query };
+      if (params.tags && typeof params.tags === 'string') {
+        params.tags = params.tags.split(',').map(tag => tag.trim());
+      }
+
+      const results = await memoryService.list(params);
       res.json(results);
     } catch (error) {
       logger.error('List failed:', error);
