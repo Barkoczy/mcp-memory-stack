@@ -36,6 +36,11 @@ export default {
         'monitor', // Monitoring and metrics
         'security', // Security related changes
         'performance', // Performance optimizations
+        'fastify', // Fastify migration (Phase 1)
+        'rust', // Rust microservices (Phase 2)
+        'elasticsearch', // Search integration
+        'observability', // Monitoring stack
+        'migration', // Migration-related changes
       ],
     ],
     'subject-case': [2, 'always', 'lower-case'],

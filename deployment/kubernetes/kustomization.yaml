@@ -57,7 +57,7 @@ configMapGenerator:
 secretGenerator:
   - name: deployment-secrets
     literals:
-      - deployment.key=mcp_deployment_key_2025
+      - deployment.key=REPLACE_WITH_ACTUAL_KEY
     type: Opaque
     options:
       disableNameSuffixHash: true

@@ -120,7 +120,7 @@ services:
   # Fastify API Gateway Service
   fastify-service:
     build:
-      context: ./src/fastify
+      context: .
       dockerfile: Dockerfile
       args:
         NODE_VERSION: 20.11.0
@@ -234,76 +234,76 @@ services:
       - mcp-network
     restart: unless-stopped
 
-# Development and Testing Profiles
-profiles:
-  # Cache profile with Redis
-  cache:
-    redis:
-      image: redis:7.2.3-alpine
-      container_name: mcp-redis
-      command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
-      volumes:
-        - redis_data:/data
-      ports:
-        - "${REDIS_PORT:-6379}:6379"
-      networks:
-        - mcp-network
-      healthcheck:
-        test: ["CMD", "redis-cli", "ping"]
-        interval: 10s
-        timeout: 3s
-        retries: 3
-      restart: unless-stopped
+  # Redis Cache Service (profile: cache)
+  redis:
+    image: redis:7.2.3-alpine
+    container_name: mcp-redis
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    profiles: ["cache"]
+    volumes:
+      - redis_data:/data
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    networks:
+      - mcp-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
 
-  # Admin tools profile
-  admin:
-    pgadmin:
-      image: dpage/pgadmin4:7.8
-      container_name: mcp-pgadmin
-      environment:
-        PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@company.com}
-        PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin_password_2025}
-        PGADMIN_CONFIG_SERVER_MODE: "False"
-        PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
-      volumes:
-        - pgadmin_data:/var/lib/pgadmin
-      ports:
-        - "${PGADMIN_PORT:-5050}:80"
-      networks:
-        - mcp-network
-      depends_on:
-        postgresql:
-          condition: service_healthy
-      restart: unless-stopped
+  # pgAdmin Database Admin (profile: admin)
+  pgadmin:
+    image: dpage/pgadmin4:7.8
+    container_name: mcp-pgadmin
+    profiles: ["admin"]
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@company.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin_password_2025}
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    ports:
+      - "${PGADMIN_PORT:-5050}:80"
+    networks:
+      - mcp-network
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    restart: unless-stopped
 
-  # Full monitoring stack
-  monitoring:
-    node-exporter:
-      image: prom/node-exporter:v1.7.0
-      container_name: mcp-node-exporter
-      command:
-        - "--path.rootfs=/host"
-      volumes:
-        - "/:/host:ro,rslave"
-      ports:
-        - "${NODE_EXPORTER_PORT:-9100}:9100"
-      networks:
-        - mcp-network
-      restart: unless-stopped
+  # Node Exporter (profile: monitoring)
+  node-exporter:
+    image: prom/node-exporter:v1.7.0
+    container_name: mcp-node-exporter
+    profiles: ["monitoring"]
+    command:
+      - "--path.rootfs=/host"
+    volumes:
+      - "/:/host:ro,rslave"
+    ports:
+      - "${NODE_EXPORTER_PORT:-9100}:9100"
+    networks:
+      - mcp-network
+    restart: unless-stopped
 
-    cadvisor:
-      image: gcr.io/cadvisor/cadvisor:v0.47.2
-      container_name: mcp-cadvisor
-      volumes:
-        - /:/rootfs:ro
-        - /var/run:/var/run:rw
-        - /sys:/sys:ro
-        - /var/lib/docker/:/var/lib/docker:ro
-      ports:
-        - "${CADVISOR_PORT:-8081}:8080"
-      networks:
-        - mcp-network
-      restart: unless-stopped
+  # cAdvisor Container Monitoring (profile: monitoring)
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.47.2
+    container_name: mcp-cadvisor
+    profiles: ["monitoring"]
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:rw
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    ports:
+      - "${CADVISOR_PORT:-8081}:8080"
+    networks:
+      - mcp-network
+    restart: unless-stopped
 
 # Persistent volumes
 volumes:
@@ -328,5 +328,5 @@ networks:
     driver: bridge
     ipam:
       config:
-        - subnet: 172.20.0.0/16
-          gateway: 172.20.0.1
+        - subnet: 172.25.0.0/16
+          gateway: 172.25.0.1

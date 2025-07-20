@@ -1,79 +1,100 @@
-# Production-optimized Dockerfile for MCP Memory Server
-# Multi-stage build for minimal image size and security
+# Multi-stage build for production-optimized MCP Memory Server
+# Updated for 2025 TypeScript build system with tsup
 
-# Stage 1: Dependencies and Build
-FROM node:22.17.1-slim AS builder
-WORKDIR /app
+# Stage 1: Build dependencies and compile TypeScript
+FROM node:20.11.0-alpine AS builder
 
 # Install build dependencies
-RUN apt-get update && apt-get install -y \
+RUN apk add --no-cache \
     python3 \
     make \
     g++ \
     git \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+    curl
 
-# Copy package files first for better caching
-COPY package*.json ./
-
-# Install all dependencies (including dev for build)
-RUN npm ci && \
-    npm cache clean --force
-
-# Copy source code
-COPY src ./src
-COPY migrations ./migrations
-COPY config ./config
-COPY scripts ./scripts
-
-# Create necessary directories
-RUN mkdir -p models logs tmp
-
-# Stage 2: Production
-FROM node:22.17.1-slim AS production
-
-# Install runtime dependencies
-RUN apt-get update && apt-get install -y \
-    tini \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
-
-# Create non-root user
-RUN groupadd -g 1001 appgroup && \
-    useradd -u 1001 -g appgroup -s /bin/bash -m appuser
-
+# Set working directory
 WORKDIR /app
 
-# Copy only production files from builder
-COPY --from=builder --chown=appuser:appgroup /app/node_modules ./node_modules
-COPY --from=builder --chown=appuser:appgroup /app/src ./src
-COPY --from=builder --chown=appuser:appgroup /app/migrations ./migrations
-COPY --from=builder --chown=appuser:appgroup /app/config ./config
-COPY --from=builder --chown=appuser:appgroup /app/package*.json ./
-COPY --from=builder --chown=appuser:appgroup /app/models ./models
-COPY --from=builder --chown=appuser:appgroup /app/logs ./logs
-COPY --from=builder --chown=appuser:appgroup /app/tmp ./tmp
+# Copy package files
+COPY package*.json ./
+COPY tsconfig.json ./
+COPY tsup.config.ts ./
 
-# Set proper permissions
-RUN chmod -R 750 /app && \
-    chmod -R 770 /app/logs /app/tmp /app/models
+# Install dependencies with production optimizations
+RUN npm ci --no-audit --no-fund
 
-# Remove dev dependencies in production stage
+# Copy source code
+COPY src/ ./src/
+COPY config/ ./config/
+COPY migrations/ ./migrations/
+
+# Build TypeScript to JavaScript using tsup
+RUN npm run build
+
+# Stage 2: Production runtime
+FROM node:20.11.0-alpine AS runtime
+
+# Install runtime dependencies and security updates
+RUN apk add --no-cache \
+    dumb-init \
+    tzdata \
+    curl \
+    && apk upgrade --no-cache
+
+# Create non-root user for security
+RUN addgroup -S mcpapp && \
+    adduser -u 1001 -S mcpapp -G mcpapp
+
+# Set working directory
+WORKDIR /app
+
+# Copy built application from builder stage
+COPY --from=builder --chown=mcpapp:mcpapp /app/node_modules ./node_modules
+COPY --from=builder --chown=mcpapp:mcpapp /app/dist ./dist
+COPY --from=builder --chown=mcpapp:mcpapp /app/config ./config
+COPY --from=builder --chown=mcpapp:mcpapp /app/migrations ./migrations
+COPY --from=builder --chown=mcpapp:mcpapp /app/package*.json ./
+
+# Create necessary directories with proper permissions
+RUN mkdir -p /app/logs /app/cache /app/models /app/tmp && \
+    chown -R mcpapp:mcpapp /app
+
+# Remove dev dependencies to minimize image size
 RUN npm prune --omit=dev && \
     npm cache clean --force
 
-USER appuser
+# Switch to non-root user
+USER mcpapp
+
+# Set environment variables
+ENV NODE_ENV=production \
+    NODE_OPTIONS="--max-old-space-size=2048 --enable-source-maps" \
+    PORT=3333 \
+    HEALTH_PORT=3334 \
+    LOG_LEVEL=info
 
 # Expose ports
 EXPOSE 3333 3334
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:3334/health || exit 1
 
-# Use tini for proper signal handling
-ENTRYPOINT ["/usr/bin/tini", "--"]
+# Use dumb-init to handle signals properly
+ENTRYPOINT ["dumb-init", "--"]
 
-# Start the server
-CMD ["node", "src/index.js"]
+# Start the application using built ESM output
+CMD ["node", "dist/index.mjs"]
+
+# Add labels for better container management
+LABEL \
+    maintainer="platform-team@company.com" \
+    version="1.0.0" \
+    description="MCP Memory Stack - Enterprise TypeScript API Server" \
+    org.opencontainers.image.title="MCP Memory Server" \
+    org.opencontainers.image.description="Enterprise MCP Memory Management Server with TypeScript build" \
+    org.opencontainers.image.version="1.0.0" \
+    org.opencontainers.image.vendor="Company Platform Team" \
+    org.opencontainers.image.licenses="MIT" \
+    org.opencontainers.image.documentation="https://docs.company.com/mcp-memory-stack" \
+    org.opencontainers.image.source="https://github.com/company/mcp-memory-stack"
