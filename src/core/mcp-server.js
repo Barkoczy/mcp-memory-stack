@@ -35,14 +35,22 @@ export function createMCPServer(config) {
     }
   });
 
-  // Keep process alive
+  // Keep readline interface alive
   rl.on('close', () => {
     logger.info('MCP interface closed, keeping process alive');
   });
 
+  // Handle stdin end without closing the interface
   process.stdin.on('end', () => {
     logger.info('stdin ended, keeping process alive');
   });
+
+  // In child processes, stdin might close prematurely
+  // Set stdin to non-blocking mode to prevent immediate closure
+  if (process.stdin.isTTY === false) {
+    process.stdin.setEncoding('utf8');
+    process.stdin.resume();
+  }
 
   logger.info('MCP server started');
   return { memoryService };

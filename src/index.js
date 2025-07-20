@@ -1,3 +1,6 @@
+// Early debug output
+console.error('DEBUG: Script starting');
+
 import dotenv from 'dotenv';
 
 import { createMCPServer } from './core/mcp-server.js';
@@ -152,15 +155,37 @@ function startRESTAPIIfEnabled() {
 
 async function main() {
   try {
+    console.error('DEBUG: main() function started');
     logStartupInfo();
+    console.error('DEBUG: startup info logged');
 
     await initializeDatabaseWithTracking();
+    console.error('DEBUG: database initialized');
 
     // In stdio mode, only start MCP server without HTTP servers
     if (process.env.MCP_MODE === 'stdio') {
-      createMCPServer(config[MODE]);
-      logger.info('✅ MCP server started in stdio mode');
-      return;
+      const mcpStartTime = Date.now();
+      try {
+        createMCPServer(config[MODE]);
+        const mcpDuration = Date.now() - mcpStartTime;
+        logger.info('✅ MCP server started in stdio mode', {
+          duration: `${mcpDuration}ms`,
+          protocol: 'stdio',
+        });
+
+        // Setup signal handlers to keep process alive
+        process.on('SIGTERM', () => shutdown('SIGTERM'));
+        process.on('SIGINT', () => shutdown('SIGINT'));
+        return;
+      } catch (error) {
+        const mcpDuration = Date.now() - mcpStartTime;
+        logger.error('❌ MCP server startup failed in stdio mode', {
+          duration: `${mcpDuration}ms`,
+          error: error.message,
+          stack: error.stack,
+        });
+        throw error;
+      }
     }
 
     startHealthServer();
