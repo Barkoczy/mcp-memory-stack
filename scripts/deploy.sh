@@ -1,21 +1,31 @@
 #!/bin/bash
 
-# Production Deployment Script for MCP Memory Stack
-# Following security best practices 2025
+# MCP Memory Stack - Deployment Script
+# Enterprise 2025 - Automated deployment with comprehensive validation
 
 set -euo pipefail
+
+# Configuration
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+DEPLOYMENT_DIR="$PROJECT_ROOT/deployment"
+CONFIG_FILE="$PROJECT_ROOT/.env"
+
+# Default values
+ENVIRONMENT="${ENVIRONMENT:-development}"
+NAMESPACE="${NAMESPACE:-mcp-memory-stack}"
+KUBECONFIG="${KUBECONFIG:-$HOME/.kube/config}"
+DEPLOY_METHOD="${DEPLOY_METHOD:-docker-compose}"
+VERSION="${VERSION:-latest}"
+DRY_RUN="${DRY_RUN:-false}"
 
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+PURPLE='\033[0;35m'
 NC='\033[0m' # No Color
-
-# Configuration
-ENVIRONMENT=${1:-production}
-COMPOSE_FILE="docker-compose.${ENVIRONMENT}.yml"
-PROJECT_NAME="mcp-memory-stack"
 
 # Functions
 log_info() {

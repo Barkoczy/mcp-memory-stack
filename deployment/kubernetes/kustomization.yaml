@@ -1,0 +1,179 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: mcp-memory-stack
+  labels:
+    app.kubernetes.io/name: mcp-memory-stack
+    app.kubernetes.io/version: "1.0.0"
+
+# Common labels applied to all resources
+commonLabels:
+  app.kubernetes.io/managed-by: kustomize
+  app.kubernetes.io/part-of: mcp-memory-stack
+  environment: production
+  team: platform
+
+# Common annotations applied to all resources
+commonAnnotations:
+  contact: "platform-team@company.com"
+  documentation: "https://docs.company.com/mcp-memory-stack"
+  version: "1.0.0"
+
+# Namespace to deploy all resources
+namespace: mcp-memory-stack
+
+# Resource files to include
+resources:
+  - namespace.yaml
+  - secrets.yaml
+  - configmap.yaml
+  - postgresql.yaml
+  - qdrant.yaml
+  - fastify-service.yaml
+  - rust-embedding-service.yaml
+  - monitoring.yaml
+  - ingress.yaml
+
+# Images to customize
+images:
+  - name: mcp/fastify-service
+    newTag: 1.0.0
+  - name: mcp/rust-embedding-service
+    newTag: 1.0.0
+
+# ConfigMap generators for additional configs
+configMapGenerator:
+  - name: deployment-info
+    literals:
+      - deployment.date=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+      - deployment.version=1.0.0
+      - deployment.environment=production
+      - deployment.team=platform
+    options:
+      disableNameSuffixHash: true
+
+# Secret generators for additional secrets
+secretGenerator:
+  - name: deployment-secrets
+    literals:
+      - deployment.key=mcp_deployment_key_2025
+    type: Opaque
+    options:
+      disableNameSuffixHash: true
+
+# Patches for environment-specific customizations
+patches:
+  # Production resource adjustments
+  - target:
+      kind: Deployment
+      name: fastify-service
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 5
+      - op: add
+        path: /spec/template/spec/containers/0/resources/requests/memory
+        value: 1Gi
+      - op: add
+        path: /spec/template/spec/containers/0/resources/limits/memory
+        value: 4Gi
+
+  - target:
+      kind: Deployment
+      name: rust-embedding-service
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 4
+      - op: add
+        path: /spec/template/spec/containers/0/resources/requests/memory
+        value: 2Gi
+      - op: add
+        path: /spec/template/spec/containers/0/resources/limits/memory
+        value: 8Gi
+
+  # Storage class adjustments for production
+  - target:
+      kind: PersistentVolumeClaim
+      name: postgresql-pvc
+    patch: |-
+      - op: replace
+        path: /spec/storageClassName
+        value: fast-ssd
+      - op: replace
+        path: /spec/resources/requests/storage
+        value: 200Gi
+
+  - target:
+      kind: PersistentVolumeClaim
+      name: qdrant-pvc
+    patch: |-
+      - op: replace
+        path: /spec/storageClassName
+        value: fast-ssd
+      - op: replace
+        path: /spec/resources/requests/storage
+        value: 100Gi
+
+  # Security context enhancements
+  - target:
+      kind: Deployment
+    patch: |-
+      - op: add
+        path: /spec/template/spec/securityContext/seccompProfile
+        value:
+          type: RuntimeDefault
+      - op: add
+        path: /spec/template/spec/containers/0/securityContext/allowPrivilegeEscalation
+        value: false
+      - op: add
+        path: /spec/template/spec/containers/0/securityContext/readOnlyRootFilesystem
+        value: true
+      - op: add
+        path: /spec/template/spec/containers/0/securityContext/capabilities
+        value:
+          drop:
+            - ALL
+
+# Replacements for dynamic values
+replacements:
+  - source:
+      kind: ConfigMap
+      name: deployment-info
+      fieldPath: data.deployment.version
+    targets:
+      - select:
+          kind: Deployment
+        fieldPaths:
+          - metadata.labels.version
+
+# Validation rules
+validators:
+  - manifests.yaml
+
+# Build options
+buildMetadata:
+  - originAnnotations
+  - transformerAnnotations
+
+# Generator options
+generatorOptions:
+  disableNameSuffixHash: false
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+  annotations:
+    config.kubernetes.io/local-config: "true"
+
+# Kustomize transformations
+transformers:
+  - |-
+    apiVersion: builtin
+    kind: LabelTransformer
+    metadata:
+      name: labels
+    labels:
+      deployment.timestamp: $(date +%s)
+    fieldSpecs:
+      - path: metadata/labels
+        create: true

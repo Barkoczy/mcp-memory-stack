@@ -17,16 +17,16 @@ const NODE_ENV = process.env.NODE_ENV || 'development';
 const MODE = NODE_ENV === 'production' ? 'production' : 'development';
 
 // Global error handlers
-process.on('uncaughtException', error => {
+process.on('uncaughtException', (error: Error) => {
   logger.error('Uncaught Exception', {
-    error: error.message,
-    stack: error.stack,
+    error: error instanceof Error ? error.message : 'Unknown error',
+    stack: error instanceof Error ? error.stack : undefined,
     pid: process.pid,
   });
   process.exit(1);
 });
 
-process.on('unhandledRejection', (reason, promise) => {
+process.on('unhandledRejection', (reason: unknown, promise: Promise<unknown>) => {
   logger.error('Unhandled Rejection', {
     reason: reason?.toString(),
     promise: promise?.toString(),
@@ -49,7 +49,7 @@ function logStartupInfo() {
   });
 }
 
-function logStartupSuccess(totalStartupDuration) {
+function logStartupSuccess(totalStartupDuration: number): void {
   logger.info('🎉 MCP Memory Server started successfully', {
     totalStartupTime: `${totalStartupDuration}ms`,
     mode: MODE,
@@ -73,7 +73,7 @@ async function initializeDatabaseWithTracking() {
     const dbDuration = Date.now() - dbStartTime;
     logger.error('❌ Database initialization failed', {
       duration: `${dbDuration}ms`,
-      error: error.message,
+      error: error instanceof Error ? error.message : 'Unknown error',
     });
     throw error;
   }
@@ -97,7 +97,7 @@ function startHealthServer() {
     logger.error('❌ Health server startup failed', {
       port: healthPort,
       duration: `${healthDuration}ms`,
-      error: error.message,
+      error: error instanceof Error ? error.message : 'Unknown error',
     });
     throw error;
   }
@@ -120,7 +120,7 @@ function startMCPServerIfEnabled() {
       const mcpDuration = Date.now() - mcpStartTime;
       logger.error('❌ MCP server startup failed', {
         duration: `${mcpDuration}ms`,
-        error: error.message,
+        error: error instanceof Error ? error.message : 'Unknown error',
       });
       throw error;
     }
@@ -146,7 +146,7 @@ function startRESTAPIIfEnabled() {
       logger.error('❌ REST API startup failed', {
         port,
         duration: `${restDuration}ms`,
-        error: error.message,
+        error: error instanceof Error ? error.message : 'Unknown error',
       });
       throw error;
     }
@@ -181,8 +181,8 @@ async function main() {
         const mcpDuration = Date.now() - mcpStartTime;
         logger.error('❌ MCP server startup failed in stdio mode', {
           duration: `${mcpDuration}ms`,
-          error: error.message,
-          stack: error.stack,
+          error: error instanceof Error ? error.message : 'Unknown error',
+          stack: error instanceof Error ? error.stack : undefined,
         });
         throw error;
       }
@@ -201,8 +201,8 @@ async function main() {
     const failureDuration = Date.now() - startupTime;
 
     logger.error('❌ Failed to start server', {
-      error: error.message,
-      stack: error.stack,
+      error: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
       duration: `${failureDuration}ms`,
       mode: MODE,
       nodeVersion: process.version,
@@ -212,7 +212,7 @@ async function main() {
   }
 }
 
-function shutdown(signal) {
+function shutdown(signal: string): void {
   const shutdownStartTime = Date.now();
 
   logger.info('🛑 Graceful shutdown initiated', {
@@ -249,8 +249,8 @@ function shutdown(signal) {
     const shutdownDuration = Date.now() - shutdownStartTime;
 
     logger.error('❌ Error during shutdown', {
-      error: error.message,
-      stack: error.stack,
+      error: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
       duration: `${shutdownDuration}ms`,
       signal,
     });

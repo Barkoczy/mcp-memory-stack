@@ -1,0 +1,110 @@
+# Node.js files
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
+
+# Development files
+src/
+tests/
+.env*
+.env.local
+.env.development
+.env.test
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Version control
+.git/
+.gitignore
+.gitattributes
+
+# Documentation
+README.md
+CHANGELOG.md
+*.md
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+Jenkinsfile
+
+# Docker
+Dockerfile*
+.dockerignore
+docker-compose*
+
+# Logs
+logs/
+*.log
+
+# Runtime data
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage/
+.nyc_output/
+
+# TypeScript cache
+*.tsbuildinfo
+
+# ESLint cache
+.eslintcache
+
+# Prettier cache
+.prettiercache
+
+# Package manager locks (except package-lock.json for npm)
+yarn.lock
+pnpm-lock.yaml
+
+# Temporary folders
+tmp/
+temp/
+
+# Cache directories
+.cache/
+cache/
+
+# Config files that shouldn't be in container
+config/local*
+config/development*
+config/test*
+
+# Kubernetes manifests
+deployment/
+k8s/
+
+# Scripts
+scripts/
+
+# Test files
+__tests__/
+test/
+tests/
+spec/
+*.test.*
+*.spec.*

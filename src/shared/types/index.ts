@@ -46,7 +46,11 @@ export interface ListMemoryParams {
 
 export interface BatchMemoryRequest {
   readonly operation: 'create' | 'update' | 'delete';
-  readonly memories: readonly (CreateMemoryRequest | (UpdateMemoryRequest & { readonly id: string }) | { readonly id: string })[];
+  readonly memories: readonly (
+    | CreateMemoryRequest
+    | (UpdateMemoryRequest & { readonly id: string })
+    | { readonly id: string }
+  )[];
 }
 
 export interface HealthStatus {

@@ -1,0 +1,234 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mcp-config
+  namespace: mcp-memory-stack
+  labels:
+    app.kubernetes.io/name: mcp-memory-stack
+    app.kubernetes.io/component: config
+data:
+  # Fastify Service Configuration
+  fastify-config.json: |
+    {
+      "server": {
+        "port": 3333,
+        "host": "0.0.0.0",
+        "keepAliveTimeout": 60000,
+        "bodyLimit": 1048576,
+        "requestTimeout": 30000
+      },
+      "database": {
+        "host": "postgresql-service",
+        "port": 5432,
+        "database": "mcp_memory",
+        "user": "mcp_user",
+        "pool": {
+          "min": 2,
+          "max": 20,
+          "acquireTimeoutMillis": 30000,
+          "idleTimeoutMillis": 30000
+        }
+      },
+      "security": {
+        "cors": {
+          "enabled": true,
+          "origins": ["*"]
+        },
+        "rateLimit": {
+          "enabled": true,
+          "max": 1000,
+          "windowMs": 60000
+        },
+        "helmet": {
+          "enabled": true
+        }
+      },
+      "monitoring": {
+        "metrics": {
+          "enabled": true,
+          "port": 9090
+        },
+        "healthCheck": {
+          "enabled": true,
+          "path": "/health"
+        }
+      }
+    }
+
+  # Rust Embedding Service Configuration
+  rust-config.toml: |
+    [server]
+    port = 8080
+    host = "0.0.0.0"
+    workers = 4
+    keep_alive = 60
+    timeout = 30
+    max_request_size = 1048576
+
+    [embedding]
+    model_name = "sentence-transformers/all-MiniLM-L6-v2"
+    dimensions = 384
+    max_sequence_length = 512
+    batch_size = 32
+    cache_size = 1000
+
+    [embedding.device]
+    use_gpu = false
+    cpu_threads = 4
+
+    [qdrant]
+    url = "http://qdrant-service:6333"
+    timeout = 30
+    collection_name = "mcp_embeddings"
+    vector_size = 384
+    distance = "Cosine"
+    shard_number = 2
+    replication_factor = 1
+
+    [telemetry]
+    enable_tracing = true
+    jaeger_endpoint = "http://jaeger-collector:14268/api/traces"
+    enable_metrics = true
+    metrics_port = 9090
+    log_level = "info"
+    structured_logging = true
+
+    [security]
+    enable_cors = true
+    cors_origins = ["*"]
+
+    [security.rate_limit]
+    requests_per_minute = 1000
+    burst_size = 50
+    enable = true
+
+    [performance]
+    connection_pool_size = 20
+    request_timeout = 30
+    embedding_cache_ttl = 3600
+    batch_processing = true
+    async_processing = true
+
+  # PostgreSQL Configuration
+  postgresql.conf: |
+    # Performance Configuration
+    shared_buffers = 2GB
+    effective_cache_size = 6GB
+    maintenance_work_mem = 512MB
+    checkpoint_completion_target = 0.9
+    wal_buffers = 16MB
+    default_statistics_target = 100
+    random_page_cost = 1.1
+    effective_io_concurrency = 200
+    work_mem = 32MB
+    min_wal_size = 1GB
+    max_wal_size = 4GB
+
+    # Connection Configuration
+    max_connections = 200
+    shared_preload_libraries = 'pg_stat_statements,pgvector'
+
+    # Logging Configuration
+    log_destination = 'stderr'
+    logging_collector = on
+    log_directory = '/var/log/postgresql'
+    log_filename = 'postgresql-%Y-%m-%d_%H%M%S.log'
+    log_statement = 'mod'
+    log_min_duration_statement = 1000
+    log_checkpoints = on
+    log_connections = on
+    log_disconnections = on
+    log_lock_waits = on
+
+  # Qdrant Configuration
+  qdrant-config.yaml: |
+    service:
+      host: 0.0.0.0
+      http_port: 6333
+      grpc_port: 6334
+      max_request_size_mb: 32
+      max_workers: 0
+      enable_cors: true
+
+    storage:
+      storage_path: /qdrant/storage
+      snapshots_path: /qdrant/snapshots
+      on_disk_payload: true
+      wal:
+        wal_capacity_mb: 32
+        wal_segments_ahead: 0
+
+    cluster:
+      enabled: false
+
+    telemetry:
+      disabled: false
+
+  # Prometheus Configuration
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+
+    rule_files:
+      - "/etc/prometheus/rules/*.yml"
+
+    scrape_configs:
+      - job_name: 'prometheus'
+        static_configs:
+          - targets: ['localhost:9090']
+
+      - job_name: 'fastify-service'
+        static_configs:
+          - targets: ['fastify-service:9090']
+        metrics_path: /metrics
+        scrape_interval: 15s
+
+      - job_name: 'rust-embedding-service'
+        static_configs:
+          - targets: ['rust-embedding-service:9090']
+        metrics_path: /metrics
+        scrape_interval: 15s
+
+      - job_name: 'postgresql'
+        static_configs:
+          - targets: ['postgresql-service:9187']
+
+      - job_name: 'qdrant'
+        static_configs:
+          - targets: ['qdrant-service:6333']
+        metrics_path: /metrics
+
+      - job_name: 'kubernetes-apiservers'
+        kubernetes_sd_configs:
+          - role: endpoints
+        scheme: https
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_namespace, __meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
+            action: keep
+            regex: default;kubernetes;https
+
+      - job_name: 'kubernetes-pods'
+        kubernetes_sd_configs:
+          - role: pod
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            regex: ([^:]+)(?::\d+)?;(\d+)
+            replacement: $1:$2
+            target_label: __address__
+
+    alerting:
+      alertmanagers:
+        - static_configs:
+            - targets: ['alertmanager:9093']

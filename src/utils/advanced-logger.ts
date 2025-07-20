@@ -1,6 +1,7 @@
 import { createRequire } from 'module';
 import path from 'path';
 import fs from 'fs';
+import type { Request, Response } from 'express';
 
 import DailyRotateFile from 'winston-daily-rotate-file';
 import winston from 'winston';
@@ -35,6 +36,23 @@ const colors = {
 
 winston.addColors(colors);
 
+interface LogMetadata {
+  service: string;
+  version: string;
+  environment: string;
+  hostname: string;
+  pid: number;
+  component?: string;
+  type?: string;
+  correlationId?: string;
+  timestamp?: string;
+  [key: string]: any;
+}
+
+interface CorrelationStore {
+  correlationId: string;
+}
+
 // Custom format for structured JSON logging (2025 standard)
 const structuredFormat = winston.format.combine(
   winston.format.timestamp({
@@ -67,7 +85,7 @@ const consoleFormat = winston.format.combine(
 );
 
 // Production file transport with daily rotation
-const createFileTransport = (filename, level = 'info') => {
+const createFileTransport = (filename: string, level: string = 'info'): DailyRotateFile => {
   return new DailyRotateFile({
     filename: path.join(logsDir, filename),
     datePattern: 'YYYY-MM-DD',
@@ -117,7 +135,7 @@ const logger = winston.createLogger({
     environment: process.env.NODE_ENV || 'development',
     hostname: process.env.HOSTNAME || require('os').hostname(),
     pid: process.pid,
-  },
+  } as LogMetadata,
   transports: [consoleTransport, combinedTransport, errorTransport, appTransport],
   // Handle uncaught exceptions and rejections
   exceptionHandlers: [
@@ -136,7 +154,7 @@ const logger = winston.createLogger({
 });
 
 // Child loggers for specific components
-const createChildLogger = (component, metadata = {}) => {
+const createChildLogger = (component: string, metadata: Record<string, any> = {}): winston.Logger => {
   return logger.child({
     component,
     ...metadata,
@@ -156,7 +174,7 @@ securityLogger.add(securityTransport);
 metricsLogger.add(metricsTransport);
 
 // Correlation ID support for distributed tracing
-let correlationIdStore;
+let correlationIdStore: any;
 
 // Initialize async local storage for correlation IDs
 try {
@@ -166,12 +184,20 @@ try {
   logger.warn('AsyncLocalStorage not available, correlation IDs will be limited');
 }
 
+interface EnhancedLogger extends winston.Logger {
+  withCorrelationId: <T>(correlationId: string, fn: () => T) => T;
+  getCorrelationId: () => string | null;
+  logWithContext: (level: string, message: string, meta?: Record<string, any>) => void;
+  fatal: (message: string, meta?: Record<string, any>) => void;
+  trace: (message: string, meta?: Record<string, any>) => void;
+}
+
 // Enhanced logging methods with correlation ID support
-const enhancedLogger = {
+const enhancedLogger: EnhancedLogger = {
   ...logger,
 
   // Wrap method to add correlation ID automatically
-  withCorrelationId: (correlationId, fn) => {
+  withCorrelationId: <T>(correlationId: string, fn: () => T): T => {
     if (correlationIdStore) {
       return correlationIdStore.run({ correlationId }, fn);
     } else {
@@ -180,16 +206,16 @@ const enhancedLogger = {
   },
 
   // Get current correlation ID
-  getCorrelationId: () => {
+  getCorrelationId: (): string | null => {
     if (correlationIdStore) {
-      const store = correlationIdStore.getStore();
-      return store?.correlationId;
+      const store: CorrelationStore | undefined = correlationIdStore.getStore();
+      return store?.correlationId || null;
     }
     return null;
   },
 
   // Enhanced logging methods that include correlation ID
-  logWithContext: (level, message, meta = {}) => {
+  logWithContext: (level: string, message: string, meta: Record<string, any> = {}): void => {
     const correlationId = enhancedLogger.getCorrelationId();
     const enrichedMeta = {
       ...meta,
@@ -197,41 +223,43 @@ const enhancedLogger = {
       timestamp: new Date().toISOString(),
     };
 
-    logger[level](message, enrichedMeta);
+    (logger as any)[level](message, enrichedMeta);
   },
-};
+
+  fatal: (message: string, meta: Record<string, any> = {}): void => {
+    enhancedLogger.logWithContext('fatal', message, meta);
+  },
+
+  trace: (message: string, meta: Record<string, any> = {}): void => {
+    enhancedLogger.logWithContext('trace', message, meta);
+  },
+} as EnhancedLogger;
 
 // Override standard methods to include context
-['fatal', 'error', 'warn', 'info', 'debug', 'trace'].forEach(level => {
-  enhancedLogger[level] = (message, meta = {}) => {
+(['error', 'warn', 'info', 'debug'] as const).forEach(level => {
+  (enhancedLogger as any)[level] = (message: string, meta: Record<string, any> = {}) => {
     enhancedLogger.logWithContext(level, message, meta);
   };
 });
 
-// Performance logging utility - removed to fix TypeScript issues
-// Use simple Date.now() timing instead
-
-// Security logging utilities - removed to fix TypeScript issues
-// Use regular logger.info/warn/error instead
-
 // HTTP request logging utility - standalone function to avoid TypeScript conflicts
-const logHttpRequest = (req, res, duration) => {
+const logHttpRequest = (req: Request, res: Response, duration: number): void => {
   const { statusCode } = res;
   const level = statusCode >= 500 ? 'error' : statusCode >= 400 ? 'warn' : 'info';
 
-  httpLogger[level]('HTTP Request', {
+  (httpLogger as any)[level]('HTTP Request', {
     method: req.method,
     url: req.url,
     statusCode,
     duration,
     userAgent: req.get('User-Agent'),
-    ip: req.ip || req.connection.remoteAddress,
+    ip: req.ip || (req.connection as any)?.remoteAddress,
     referrer: req.get('Referrer'),
   });
 };
 
 // Graceful shutdown handler
-const gracefulShutdown = () => {
+const gracefulShutdown = (): Promise<void> => {
   logger.info('Shutting down logger...');
 
   // Wait for all transports to finish writing

@@ -28,16 +28,20 @@ const config: AppConfig = {
     maxRequestSize: process.env.API_MAX_REQUEST_SIZE ?? '10mb',
     compression: process.env.API_COMPRESSION !== 'false',
     cors: process.env.API_CORS !== 'false',
-    rateLimit: process.env.API_RATE_LIMIT 
-      ? parseInt(process.env.API_RATE_LIMIT, 10) 
-      : (process.env.NODE_ENV === 'production' ? 100 : false),
+    rateLimit: process.env.API_RATE_LIMIT
+      ? parseInt(process.env.API_RATE_LIMIT, 10)
+      : process.env.NODE_ENV === 'production'
+        ? 100
+        : false,
   },
   security: {
     apiKey: process.env.API_KEY,
-    jwt: process.env.JWT_SECRET ? {
-      secret: process.env.JWT_SECRET,
-      expiresIn: process.env.JWT_EXPIRES_IN ?? '1h',
-    } : undefined,
+    jwt: process.env.JWT_SECRET
+      ? {
+          secret: process.env.JWT_SECRET,
+          expiresIn: process.env.JWT_EXPIRES_IN ?? '1h',
+        }
+      : undefined,
   },
   monitoring: {
     metrics: process.env.METRICS_ENABLED === 'true',
@@ -49,7 +53,7 @@ async function main(): Promise<void> {
     console.log('🚀 Starting MCP Memory Server (Fastify)...');
     console.log(`📊 Environment: ${process.env.NODE_ENV ?? 'development'}`);
     console.log(`🔧 TypeScript Strict Mode: enabled`);
-    
+
     const app = await createFastifyServer(config);
     await startServer(app);
   } catch (error) {
@@ -64,13 +68,13 @@ process.on('unhandledRejection', (reason, promise) => {
   process.exit(1);
 });
 
-process.on('uncaughtException', (error) => {
+process.on('uncaughtException', error => {
   console.error('Uncaught Exception:', error);
   process.exit(1);
 });
 
 // Start the application
-main().catch((error) => {
+main().catch(error => {
   console.error('Application startup failed:', error);
   process.exit(1);
 });

@@ -1,9 +1,32 @@
-import { createClient } from 'redis';
+import redis from 'redis';
+const { createClient } = redis;
+type RedisClientType = ReturnType<typeof createClient>;
 
 import { logger } from './logger.js';
 
+interface CacheConfig {
+  enabled: boolean;
+  redis?: string;
+  ttl?: number;
+  maxSize?: number;
+}
+
+interface CacheEntry {
+  value: any;
+  expires: number;
+}
+
+interface RedisReconnectOptions {
+  retries: number;
+}
+
 export class CacheService {
-  constructor(config) {
+  private config: CacheConfig;
+  private client: RedisClientType | null;
+  private localCache: Map<string, CacheEntry>;
+  private connected: boolean;
+
+  constructor(config: CacheConfig) {
     this.config = config;
     this.client = null;
     this.localCache = new Map();
@@ -14,12 +37,12 @@ export class CacheService {
     }
   }
 
-  async initRedis() {
+  async initRedis(): Promise<void> {
     try {
       this.client = createClient({
         url: this.config.redis,
         socket: {
-          reconnectStrategy: retries => {
+          reconnectStrategy: (retries: number): number | false => {
             if (retries > 10) {
               logger.error('Redis connection failed after 10 retries');
               return false;
@@ -29,7 +52,7 @@ export class CacheService {
         },
       });
 
-      this.client.on('error', err => {
+      this.client.on('error', (err: Error) => {
         logger.error('Redis error:', err);
         this.connected = false;
       });
@@ -46,7 +69,7 @@ export class CacheService {
     }
   }
 
-  async get(key) {
+  async get(key: string): Promise<any> {
     if (!this.config.enabled) {
       return null;
     }
@@ -77,7 +100,7 @@ export class CacheService {
     return null;
   }
 
-  async set(key, value, ttl = null) {
+  async set(key: string, value: any, ttl: number | null = null): Promise<void> {
     if (!this.config.enabled) {
       return;
     }
@@ -102,11 +125,13 @@ export class CacheService {
     // Implement simple LRU for local cache
     if (this.localCache.size > (this.config.maxSize || 1000)) {
       const firstKey = this.localCache.keys().next().value;
-      this.localCache.delete(firstKey);
+      if (firstKey !== undefined) {
+        this.localCache.delete(firstKey);
+      }
     }
   }
 
-  async delete(key) {
+  async delete(key: string): Promise<void> {
     if (this.connected && this.client) {
       try {
         await this.client.del(key);
@@ -118,7 +143,7 @@ export class CacheService {
     this.localCache.delete(key);
   }
 
-  async invalidatePattern(pattern) {
+  async invalidatePattern(pattern: string): Promise<void> {
     // Clear local cache entries matching pattern
     for (const key of this.localCache.keys()) {
       if (this.matchPattern(key, pattern)) {
@@ -139,18 +164,18 @@ export class CacheService {
     }
   }
 
-  matchPattern(str, pattern) {
+  private matchPattern(str: string, pattern: string): boolean {
     // Simple pattern matching
     if (pattern === '*') return true;
 
-    const escapedPattern = pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const regex = escapedPattern.replace(/\\\*/g, '.*').replace(/\\\?/g, '.');
+    const escapedPattern = pattern.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');
+    const regex = escapedPattern.replace(/\\\\\\*/g, '.*').replace(/\\\\\\?/g, '.');
 
     // eslint-disable-next-line security/detect-non-literal-regexp
     return new RegExp(`^${regex}$`, 'u').test(str);
   }
 
-  async flush() {
+  async flush(): Promise<void> {
     this.localCache.clear();
 
     if (this.connected && this.client) {
@@ -162,7 +187,7 @@ export class CacheService {
     }
   }
 
-  async close() {
+  async close(): Promise<void> {
     if (this.client) {
       await this.client.quit();
     }
@@ -171,12 +196,15 @@ export class CacheService {
 
 // Simple LRU cache implementation for embeddings
 export class LRUCache {
-  constructor(maxSize = 1000) {
+  private maxSize: number;
+  private cache: Map<string, any>;
+
+  constructor(maxSize: number = 1000) {
     this.maxSize = maxSize;
     this.cache = new Map();
   }
 
-  get(key) {
+  get(key: string): any | null {
     if (!this.cache.has(key)) {
       return null;
     }
@@ -189,7 +217,7 @@ export class LRUCache {
     return value;
   }
 
-  set(key, value) {
+  set(key: string, value: any): void {
     // Remove if exists
     if (this.cache.has(key)) {
       this.cache.delete(key);
@@ -201,19 +229,21 @@ export class LRUCache {
     // Remove oldest if over limit
     if (this.cache.size > this.maxSize) {
       const firstKey = this.cache.keys().next().value;
-      this.cache.delete(firstKey);
+      if (firstKey !== undefined) {
+        this.cache.delete(firstKey);
+      }
     }
   }
 
-  has(key) {
+  has(key: string): boolean {
     return this.cache.has(key);
   }
 
-  clear() {
+  clear(): void {
     this.cache.clear();
   }
 
-  get size() {
+  get size(): number {
     return this.cache.size;
   }
 }

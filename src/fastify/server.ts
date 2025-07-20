@@ -43,7 +43,7 @@ export async function createFastifyServer(config: AppConfig): Promise<FastifyApp
 
   // Register core plugins
   await app.register(fastifySensible);
-  
+
   // Security plugins
   await app.register(fastifyHelmet, {
     contentSecurityPolicy: false,
@@ -132,7 +132,7 @@ export async function createFastifyServer(config: AppConfig): Promise<FastifyApp
     app.log.error(error, 'Unhandled error occurred');
 
     const isDevelopment = process.env.NODE_ENV === 'development';
-    
+
     if (error.statusCode && error.statusCode < 500) {
       return reply.status(error.statusCode).send({
         error: error.name || 'Bad Request',
@@ -162,7 +162,7 @@ export async function createFastifyServer(config: AppConfig): Promise<FastifyApp
 export async function startServer(app: FastifyApp): Promise<void> {
   try {
     const { host, port } = app.config.server;
-    
+
     await app.listen({
       port,
       host,
@@ -174,7 +174,7 @@ export async function startServer(app: FastifyApp): Promise<void> {
     // Graceful shutdown
     const gracefulShutdown = async (signal: string): Promise<void> => {
       app.log.info(`Received ${signal}, shutting down gracefully`);
-      
+
       try {
         await app.close();
         app.log.info('Server closed successfully');
@@ -187,7 +187,6 @@ export async function startServer(app: FastifyApp): Promise<void> {
 
     process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
     process.on('SIGINT', () => gracefulShutdown('SIGINT'));
-
   } catch (error) {
     app.log.error(error, 'Failed to start server');
     process.exit(1);

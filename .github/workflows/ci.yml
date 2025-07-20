@@ -1,17 +1,36 @@
-name: CI/CD Pipeline
+# MCP Memory Stack - Continuous Integration Pipeline
+# Enterprise 2025 CI/CD Workflow with comprehensive testing and security
+
+name: CI Pipeline
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, develop, "feature/*", "hotfix/*", "release/*"]
   pull_request:
     branches: [main, develop]
-  release:
-    types: [published]
+  workflow_dispatch:
+    inputs:
+      deploy_environment:
+        description: "Environment to deploy to"
+        required: false
+        default: "staging"
+        type: choice
+        options:
+          - staging
+          - production
 
+# Environment variables available to all jobs
 env:
-  NODE_VERSION: "22.17.1"
   REGISTRY: ghcr.io
-  IMAGE_NAME: ghcr.io/${{ github.repository }}
+  IMAGE_NAME_FASTIFY: ${{ github.repository }}/fastify-service
+  IMAGE_NAME_RUST: ${{ github.repository }}/rust-embedding-service
+  NODE_VERSION: "20.11.0"
+  RUST_VERSION: "1.75.0"
+
+# Cancel previous runs on new commits
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:

@@ -1,102 +1,332 @@
 services:
-  # PostgreSQL with pgvector extension
-  postgres:
-    image: pgvector/pgvector:pg14
-    container_name: mcp-postgres
+  # PostgreSQL Database with pgvector extension
+  postgresql:
+    image: pgvector/pgvector:pg16
+    container_name: mcp-postgresql
     environment:
-      POSTGRES_DB: mcp_memory
+      POSTGRES_DB: mcp_memory_stack
       POSTGRES_USER: mcp_user
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mcp_secure_password_2024}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secure_password_2025}
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --lc-collate=C --lc-ctype=C"
-    ports:
-      - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./config/database/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - postgresql_data:/var/lib/postgresql/data
+      - ./config/database/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - ./config/database/extensions.sql:/docker-entrypoint-initdb.d/02-extensions.sql:ro
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
     networks:
-      - mcp_network
-    restart: unless-stopped
+      - mcp-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U mcp_user -d mcp_memory"]
+      test: ["CMD-SHELL", "pg_isready -U mcp_user -d mcp_memory_stack"]
       interval: 10s
       timeout: 5s
       retries: 5
-
-  # MCP Memory Server
-  mcp-memory:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: mcp-memory-server
-    environment:
-      DATABASE_URL: "postgresql://mcp_user:${POSTGRES_PASSWORD:-mcp_secure_password_2024}@postgres:5432/mcp_memory"
-      PORT: 3333
-      NODE_ENV: production
-      BERT_MODEL_PATH: "/app/models"
-    ports:
-      - "3333:3333"
-      - "3334:3334"
-    volumes:
-      - ./models:/app/models
-      - ./logs:/app/logs
-    networks:
-      - mcp_network
-    depends_on:
-      postgres:
-        condition: service_healthy
+      start_period: 30s
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: "1.0"
+        reservations:
+          memory: 512M
+          cpus: "0.5"
+
+  # Qdrant Vector Database
+  qdrant:
+    image: qdrant/qdrant:v1.7.4
+    container_name: mcp-qdrant
+    environment:
+      QDRANT__SERVICE__GRPC_PORT: 6334
+      QDRANT__SERVICE__HTTP_PORT: 6333
+      QDRANT__LOG_LEVEL: INFO
+      QDRANT__STORAGE__STORAGE_PATH: /qdrant/storage
+      QDRANT__STORAGE__SNAPSHOTS_PATH: /qdrant/snapshots
+      QDRANT__STORAGE__WAL_CAPACITY_MB: 32
+      QDRANT__STORAGE__WAL_SEGMENTS_AHEAD: 5
+    volumes:
+      - qdrant_data:/qdrant/storage
+      - qdrant_snapshots:/qdrant/snapshots
+    ports:
+      - "${QDRANT_HTTP_PORT:-6333}:6333"
+      - "${QDRANT_GRPC_PORT:-6334}:6334"
+    networks:
+      - mcp-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3334/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:6333/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-
-  # Optional: Redis for caching (enterprise upgrade)
-  redis:
-    image: redis:7-alpine
-    container_name: mcp-redis
-    command: redis-server --appendonly yes
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    networks:
-      - mcp_network
+      start_period: 40s
     restart: unless-stopped
-    profiles:
-      - cache
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+          cpus: "2.0"
+        reservations:
+          memory: 1G
+          cpus: "0.5"
 
-  # Optional: pgAdmin for database management
-  pgadmin:
-    image: dpage/pgadmin4:latest
-    container_name: mcp-pgadmin
+  # Rust Embedding Microservice
+  rust-embedding-service:
+    build:
+      context: ./rust-embedding-service
+      dockerfile: Dockerfile
+      args:
+        RUST_VERSION: 1.75.0
+    image: mcp/rust-embedding-service:1.0.0
+    container_name: mcp-rust-embedding
     environment:
-      PGADMIN_DEFAULT_EMAIL: admin@mcp-memory.local
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin_password_2024}
-      PGADMIN_CONFIG_SERVER_MODE: "False"
+      RUST_LOG: ${RUST_LOG:-info}
+      RUST_BACKTRACE: ${RUST_BACKTRACE:-1}
+      PORT: 8080
+      METRICS_PORT: 9090
+      QDRANT_URL: http://qdrant:6333
+      API_KEYS: ${RUST_API_KEYS:-rust_api_key_2025}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-sentence-transformers/all-MiniLM-L6-v2}
+      EMBEDDING_CACHE_SIZE: ${EMBEDDING_CACHE_SIZE:-1000}
+      EMBEDDING_BATCH_SIZE: ${EMBEDDING_BATCH_SIZE:-32}
+      JAEGER_ENDPOINT: http://jaeger:14268/api/traces
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+      OTEL_SERVICE_NAME: rust-embedding-service
+      OTEL_RESOURCE_ATTRIBUTES: service.version=1.0.0,deployment.environment=development
     ports:
-      - "8080:80"
-    volumes:
-      - pgadmin_data:/var/lib/pgadmin
+      - "${RUST_SERVICE_PORT:-8080}:8080"
+      - "${RUST_METRICS_PORT:-9091}:9090"
     networks:
-      - mcp_network
+      - mcp-network
     depends_on:
-      - postgres
+      qdrant:
+        condition: service_healthy
+      jaeger:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     restart: unless-stopped
-    profiles:
-      - admin
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+          cpus: "2.0"
+        reservations:
+          memory: 1G
+          cpus: "0.5"
 
+  # Fastify API Gateway Service
+  fastify-service:
+    build:
+      context: ./src/fastify
+      dockerfile: Dockerfile
+      args:
+        NODE_VERSION: 20.11.0
+    image: mcp/fastify-service:1.0.0
+    container_name: mcp-fastify-api
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 3333
+      METRICS_PORT: 9090
+      DATABASE_URL: postgresql://mcp_user:${POSTGRES_PASSWORD:-secure_password_2025}@postgresql:5432/mcp_memory_stack
+      JWT_SECRET: ${JWT_SECRET:-jwt_secret_key_2025_enterprise}
+      API_KEY: ${MCP_API_KEY:-mcp_api_key_2025}
+      RUST_EMBEDDING_SERVICE_URL: http://rust-embedding-service:8080
+      RUST_EMBEDDING_SERVICE_API_KEY: ${RUST_API_KEYS:-rust_api_key_2025}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      CACHE_TTL: ${CACHE_TTL:-3600}
+      RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-1000}
+      RATE_LIMIT_WINDOW: ${RATE_LIMIT_WINDOW:-60000}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+      OTEL_SERVICE_NAME: fastify-service
+      OTEL_RESOURCE_ATTRIBUTES: service.version=1.0.0,deployment.environment=development
+    ports:
+      - "${FASTIFY_PORT:-3333}:3333"
+      - "${FASTIFY_METRICS_PORT:-9090}:9090"
+    networks:
+      - mcp-network
+    depends_on:
+      postgresql:
+        condition: service_healthy
+      rust-embedding-service:
+        condition: service_healthy
+      jaeger:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3333/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: "1.0"
+        reservations:
+          memory: 512M
+          cpus: "0.25"
+
+  # Prometheus Monitoring
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: mcp-prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/etc/prometheus/console_libraries"
+      - "--web.console.templates=/etc/prometheus/consoles"
+      - "--storage.tsdb.retention.time=30d"
+      - "--web.enable-lifecycle"
+      - "--web.enable-admin-api"
+    volumes:
+      - ./config/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "${PROMETHEUS_PORT:-9092}:9090"
+    networks:
+      - mcp-network
+    depends_on:
+      - fastify-service
+      - rust-embedding-service
+    restart: unless-stopped
+
+  # Grafana Dashboard
+  grafana:
+    image: grafana/grafana:10.2.0
+    container_name: mcp-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin_password_2025}
+      GF_INSTALL_PLUGINS: grafana-piechart-panel,grafana-clock-panel
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    networks:
+      - mcp-network
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+  # Jaeger Tracing
+  jaeger:
+    image: jaegertracing/all-in-one:1.50
+    container_name: mcp-jaeger
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+      COLLECTOR_ZIPKIN_HOST_PORT: ":9411"
+      SPAN_STORAGE_TYPE: memory
+      MEMORY_MAX_TRACES: 50000
+    ports:
+      - "${JAEGER_UI_PORT:-16686}:16686"
+      - "${JAEGER_GRPC_PORT:-14250}:14250"
+      - "${JAEGER_HTTP_PORT:-14268}:14268"
+      - "${JAEGER_OTLP_GRPC_PORT:-4317}:4317"
+      - "${JAEGER_OTLP_HTTP_PORT:-4318}:4318"
+    networks:
+      - mcp-network
+    restart: unless-stopped
+
+# Development and Testing Profiles
+profiles:
+  # Cache profile with Redis
+  cache:
+    redis:
+      image: redis:7.2.3-alpine
+      container_name: mcp-redis
+      command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+      volumes:
+        - redis_data:/data
+      ports:
+        - "${REDIS_PORT:-6379}:6379"
+      networks:
+        - mcp-network
+      healthcheck:
+        test: ["CMD", "redis-cli", "ping"]
+        interval: 10s
+        timeout: 3s
+        retries: 3
+      restart: unless-stopped
+
+  # Admin tools profile
+  admin:
+    pgadmin:
+      image: dpage/pgadmin4:7.8
+      container_name: mcp-pgadmin
+      environment:
+        PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@company.com}
+        PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin_password_2025}
+        PGADMIN_CONFIG_SERVER_MODE: "False"
+        PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+      volumes:
+        - pgadmin_data:/var/lib/pgadmin
+      ports:
+        - "${PGADMIN_PORT:-5050}:80"
+      networks:
+        - mcp-network
+      depends_on:
+        postgresql:
+          condition: service_healthy
+      restart: unless-stopped
+
+  # Full monitoring stack
+  monitoring:
+    node-exporter:
+      image: prom/node-exporter:v1.7.0
+      container_name: mcp-node-exporter
+      command:
+        - "--path.rootfs=/host"
+      volumes:
+        - "/:/host:ro,rslave"
+      ports:
+        - "${NODE_EXPORTER_PORT:-9100}:9100"
+      networks:
+        - mcp-network
+      restart: unless-stopped
+
+    cadvisor:
+      image: gcr.io/cadvisor/cadvisor:v0.47.2
+      container_name: mcp-cadvisor
+      volumes:
+        - /:/rootfs:ro
+        - /var/run:/var/run:rw
+        - /sys:/sys:ro
+        - /var/lib/docker/:/var/lib/docker:ro
+      ports:
+        - "${CADVISOR_PORT:-8081}:8080"
+      networks:
+        - mcp-network
+      restart: unless-stopped
+
+# Persistent volumes
 volumes:
-  postgres_data:
+  postgresql_data:
+    driver: local
+  qdrant_data:
+    driver: local
+  qdrant_snapshots:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
     driver: local
   redis_data:
     driver: local
   pgadmin_data:
     driver: local
 
+# Network configuration
 networks:
-  mcp_network:
+  mcp-network:
     driver: bridge
     ipam:
       config:
         - subnet: 172.20.0.0/16
+          gateway: 172.20.0.1

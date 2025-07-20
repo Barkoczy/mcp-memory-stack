@@ -1,6 +1,36 @@
 import { register, Counter, Histogram, Gauge } from 'prom-client';
+import type { Request, Response, NextFunction } from 'express';
+
+interface MemoryUsageMetrics {
+  rss: number;
+  heapTotal: number;
+  heapUsed: number;
+  external: number;
+}
+
+interface LabelNames {
+  method?: string;
+  route?: string;
+  status?: string | number;
+  operation?: string;
+  cache_type?: string;
+  type?: string;
+}
 
 class MetricsService {
+  public httpRequests: Counter<string>;
+  public httpDuration: Histogram<string>;
+  public memoryOperations: Counter<string>;
+  public memoryOperationDuration: Histogram<string>;
+  public embeddingGenerations: Counter<string>;
+  public embeddingDuration: Histogram<string>;
+  public dbConnections: Gauge<string>;
+  public dbQueries: Counter<string>;
+  public dbQueryDuration: Histogram<string>;
+  public cacheHits: Counter<string>;
+  public cacheMisses: Counter<string>;
+  public memoryUsage: Gauge<string>;
+
   constructor() {
     // HTTP metrics
     this.httpRequests = new Counter({
@@ -100,10 +130,10 @@ class MetricsService {
     this.startSystemMetrics();
   }
 
-  startSystemMetrics() {
+  startSystemMetrics(): void {
     // Update memory usage every 10 seconds
     setInterval(() => {
-      const memUsage = process.memoryUsage();
+      const memUsage: MemoryUsageMetrics = process.memoryUsage();
       this.memoryUsage.set({ type: 'rss' }, memUsage.rss);
       this.memoryUsage.set({ type: 'heapTotal' }, memUsage.heapTotal);
       this.memoryUsage.set({ type: 'heapUsed' }, memUsage.heapUsed);
@@ -112,28 +142,28 @@ class MetricsService {
   }
 
   // Express middleware
-  middleware(req, res, next) {
+  middleware(req: Request, res: Response, next: NextFunction): void {
     const start = Date.now();
 
     res.on('finish', () => {
       const duration = (Date.now() - start) / 1000;
-      const route = req.route?.path || req.path;
+      const route = (req as any).route?.path || req.path;
       const { method } = req;
-      const status = res.statusCode;
+      const status = res.statusCode.toString();
 
-      metrics.httpRequests.inc({ method, route, status });
-      metrics.httpDuration.observe({ method, route, status }, duration);
+      this.httpRequests.inc({ method, route, status });
+      this.httpDuration.observe({ method, route, status }, duration);
     });
 
     next();
   }
 
   // Endpoint handler
-  async endpoint(req, res) {
+  async endpoint(req: Request, res: Response): Promise<void> {
     try {
       res.set('Content-Type', register.contentType);
-      const metrics = await register.metrics();
-      res.send(metrics);
+      const metricsOutput = await register.metrics();
+      res.send(metricsOutput);
     } catch (error) {
       res.status(500).send('Error generating metrics');
     }
@@ -141,7 +171,7 @@ class MetricsService {
 
   // Helper methods for tracking operations
 
-  trackMemoryOperation(operation, success, duration) {
+  trackMemoryOperation(operation: string, success: boolean, duration?: number): void {
     this.memoryOperations.inc({
       operation,
       status: success ? 'success' : 'failure',
@@ -152,7 +182,7 @@ class MetricsService {
     }
   }
 
-  trackEmbedding(success, duration) {
+  trackEmbedding(success: boolean, duration?: number): void {
     this.embeddingGenerations.inc({
       status: success ? 'success' : 'failure',
     });
@@ -162,7 +192,7 @@ class MetricsService {
     }
   }
 
-  trackDbQuery(type, success, duration) {
+  trackDbQuery(type: string, success: boolean, duration?: number): void {
     this.dbQueries.inc({
       type,
       status: success ? 'success' : 'failure',
@@ -173,7 +203,7 @@ class MetricsService {
     }
   }
 
-  trackCache(hit, cacheType = 'memory') {
+  trackCache(hit: boolean, cacheType: string = 'memory'): void {
     if (hit) {
       this.cacheHits.inc({ cache_type: cacheType });
     } else {
@@ -181,7 +211,7 @@ class MetricsService {
     }
   }
 
-  updateDbConnections(count) {
+  updateDbConnections(count: number): void {
     this.dbConnections.set(count);
   }
 }

@@ -1,16 +1,33 @@
 import jwt from 'jsonwebtoken';
+import type { Request, Response, NextFunction } from 'express';
 
 import { logger } from './logger.js';
+import type { EnvironmentConfig } from '../config.js';
 
-export function authenticate(config) {
-  return (req, res, next) => {
+interface AuthenticatedRequest extends Request {
+  apiKey?: string;
+  user?: jwt.JwtPayload | string;
+}
+
+interface SecurityConfig {
+  apiKey: boolean;
+  jwt: boolean;
+}
+
+interface AuthConfig {
+  security: SecurityConfig;
+}
+
+export function authenticate(config: AuthConfig) {
+  return (req: AuthenticatedRequest, res: Response, next: NextFunction): void => {
     try {
       // API Key authentication
       if (config.security.apiKey) {
-        const apiKey = req.headers['x-api-key'];
+        const apiKey = req.headers['x-api-key'] as string;
 
         if (!apiKey) {
-          return res.status(401).json({ error: 'API key required' });
+          res.status(401).json({ error: 'API key required' });
+          return;
         }
 
         // Validate API key
@@ -21,7 +38,8 @@ export function authenticate(config) {
             ip: req.ip,
             key: `${apiKey.substring(0, 8)}...`,
           });
-          return res.status(401).json({ error: 'Invalid API key' });
+          res.status(401).json({ error: 'Invalid API key' });
+          return;
         }
 
         req.apiKey = apiKey;
@@ -32,7 +50,8 @@ export function authenticate(config) {
         const authHeader = req.headers.authorization;
 
         if (!authHeader || !authHeader.startsWith('Bearer ')) {
-          return res.status(401).json({ error: 'JWT token required' });
+          res.status(401).json({ error: 'JWT token required' });
+          return;
         }
 
         const token = authHeader.substring(7);
@@ -41,11 +60,13 @@ export function authenticate(config) {
           const decoded = jwt.verify(token, process.env.JWT_SECRET || 'change-me');
           req.user = decoded;
         } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
           logger.warn('Invalid JWT attempt', {
             ip: req.ip,
-            error: error.message,
+            error: errorMessage,
           });
-          return res.status(401).json({ error: 'Invalid token' });
+          res.status(401).json({ error: 'Invalid token' });
+          return;
         }
       }
 
@@ -58,7 +79,7 @@ export function authenticate(config) {
 }
 
 // Generate API key
-export function generateApiKey(prefix = 'mcp') {
+export function generateApiKey(prefix: string = 'mcp'): string {
   const timestamp = Date.now().toString(36);
   const randomPart = Math.random().toString(36).substring(2, 15);
   const randomPart2 = Math.random().toString(36).substring(2, 15);
@@ -67,7 +88,7 @@ export function generateApiKey(prefix = 'mcp') {
 }
 
 // Hash API key for storage
-export async function hashApiKey(apiKey) {
+export async function hashApiKey(apiKey: string): Promise<string> {
   const crypto = await import('crypto');
   return crypto.createHash('sha256').update(apiKey).digest('hex');
 }

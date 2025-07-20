@@ -1,0 +1,361 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: mcp-memory-stack-ingress
+  namespace: mcp-memory-stack
+  labels:
+    app.kubernetes.io/name: mcp-memory-stack
+    app.kubernetes.io/component: ingress
+  annotations:
+    # NGINX Ingress Controller
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "32m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+    nginx.ingress.kubernetes.io/client-body-timeout: "60"
+    nginx.ingress.kubernetes.io/client-header-timeout: "60"
+
+    # Rate limiting
+    nginx.ingress.kubernetes.io/rate-limit: "1000"
+    nginx.ingress.kubernetes.io/rate-limit-window: "1m"
+    nginx.ingress.kubernetes.io/rate-limit-connections: "100"
+
+    # Security headers
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      add_header X-Content-Type-Options nosniff;
+      add_header X-Frame-Options DENY;
+      add_header X-XSS-Protection "1; mode=block";
+      add_header Referrer-Policy "strict-origin-when-cross-origin";
+      add_header Permissions-Policy "camera=(), microphone=(), geolocation=()";
+      add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self' wss: https:; frame-ancestors 'none';";
+
+    # CORS configuration
+    nginx.ingress.kubernetes.io/cors-allow-credentials: "true"
+    nginx.ingress.kubernetes.io/cors-allow-headers: "DNT,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization,X-API-Key"
+    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, PUT, DELETE, OPTIONS"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "https://app.company.com,https://dashboard.company.com"
+    nginx.ingress.kubernetes.io/cors-max-age: "86400"
+
+    # Health check annotations
+    nginx.ingress.kubernetes.io/health-check-path: "/health"
+    nginx.ingress.kubernetes.io/health-check-interval: "30s"
+    nginx.ingress.kubernetes.io/health-check-timeout: "5s"
+
+    # Load balancing
+    nginx.ingress.kubernetes.io/load-balance: "ewma"
+    nginx.ingress.kubernetes.io/upstream-hash-by: "$remote_addr"
+
+    # Certificate management
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    cert-manager.io/acme-challenge-type: http01
+
+    # Monitoring and metrics
+    nginx.ingress.kubernetes.io/enable-access-log: "true"
+    nginx.ingress.kubernetes.io/enable-rewrite-log: "true"
+
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - api.mcp.company.com
+        - dashboard.mcp.company.com
+        - metrics.mcp.company.com
+      secretName: mcp-tls-certificate
+  rules:
+    # Main API Gateway (Fastify Service)
+    - host: api.mcp.company.com
+      http:
+        paths:
+          - path: /api/v1(/|$)(.*)
+            pathType: Prefix
+            backend:
+              service:
+                name: fastify-service
+                port:
+                  number: 3333
+          - path: /health(/|$)(.*)
+            pathType: Prefix
+            backend:
+              service:
+                name: fastify-service
+                port:
+                  number: 3333
+          - path: /docs(/|$)(.*)
+            pathType: Prefix
+            backend:
+              service:
+                name: fastify-service
+                port:
+                  number: 3333
+
+    # Embedding Service Direct Access (for internal services)
+    - host: embedding.mcp.company.com
+      http:
+        paths:
+          - path: /api/v1(/|$)(.*)
+            pathType: Prefix
+            backend:
+              service:
+                name: rust-embedding-service
+                port:
+                  number: 8080
+          - path: /health(/|$)(.*)
+            pathType: Prefix
+            backend:
+              service:
+                name: rust-embedding-service
+                port:
+                  number: 8080
+          - path: /docs(/|$)(.*)
+            pathType: Prefix
+            backend:
+              service:
+                name: rust-embedding-service
+                port:
+                  number: 8080
+
+    # Monitoring Dashboard (Grafana)
+    - host: dashboard.mcp.company.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: grafana-service
+                port:
+                  number: 3000
+
+    # Metrics and Observability
+    - host: metrics.mcp.company.com
+      http:
+        paths:
+          - path: /prometheus(/|$)(.*)
+            pathType: Prefix
+            backend:
+              service:
+                name: prometheus-service
+                port:
+                  number: 9090
+          - path: /jaeger(/|$)(.*)
+            pathType: Prefix
+            backend:
+              service:
+                name: jaeger-service
+                port:
+                  number: 16686
+
+---
+# Certificate Issuer for Let's Encrypt
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+  labels:
+    app.kubernetes.io/name: mcp-memory-stack
+    app.kubernetes.io/component: certificates
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: platform-team@company.com
+    privateKeySecretRef:
+      name: letsencrypt-prod
+    solvers:
+      - http01:
+          ingress:
+            class: nginx
+            podTemplate:
+              spec:
+                nodeSelector:
+                  "kubernetes.io/os": linux
+
+---
+# Load Balancer Service for external access
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-load-balancer
+  namespace: mcp-memory-stack
+  labels:
+    app.kubernetes.io/name: mcp-memory-stack
+    app.kubernetes.io/component: load-balancer
+  annotations:
+    # Cloud provider specific annotations
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+    service.beta.kubernetes.io/aws-load-balancer-backend-protocol: "tcp"
+    service.beta.kubernetes.io/aws-load-balancer-connection-idle-timeout: "60"
+    service.beta.kubernetes.io/aws-load-balancer-connection-draining-enabled: "true"
+    service.beta.kubernetes.io/aws-load-balancer-connection-draining-timeout: "300"
+
+    # Health check configuration
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-protocol: "http"
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-port: "traffic-port"
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-path: "/health"
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-interval: "30"
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-timeout: "5"
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-healthy-threshold: "2"
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-unhealthy-threshold: "3"
+
+    # Security groups
+    service.beta.kubernetes.io/aws-load-balancer-security-groups: "sg-mcp-loadbalancer"
+    service.beta.kubernetes.io/aws-load-balancer-extra-security-groups: "sg-mcp-additional"
+
+spec:
+  type: LoadBalancer
+  loadBalancerClass: service.k8s.aws/nlb
+  ports:
+    - port: 80
+      targetPort: 80
+      protocol: TCP
+      name: http
+    - port: 443
+      targetPort: 443
+      protocol: TCP
+      name: https
+  selector:
+    app.kubernetes.io/name: nginx-ingress
+    app.kubernetes.io/component: controller
+
+---
+# Network Policy for Ingress
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ingress-network-policy
+  namespace: mcp-memory-stack
+  labels:
+    app.kubernetes.io/name: mcp-memory-stack
+    app.kubernetes.io/component: security
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: nginx-ingress
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow traffic from load balancer
+    - from: []
+      ports:
+        - protocol: TCP
+          port: 80
+        - protocol: TCP
+          port: 443
+  egress:
+    # Allow connections to services
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: fastify-service
+      ports:
+        - protocol: TCP
+          port: 3333
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: rust-embedding-service
+      ports:
+        - protocol: TCP
+          port: 8080
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: grafana
+      ports:
+        - protocol: TCP
+          port: 3000
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+      ports:
+        - protocol: TCP
+          port: 9090
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: jaeger
+      ports:
+        - protocol: TCP
+          port: 16686
+    # Allow DNS resolution
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+
+---
+# Priority Class for high-priority workloads
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: mcp-high-priority
+  labels:
+    app.kubernetes.io/name: mcp-memory-stack
+    app.kubernetes.io/component: scheduling
+value: 1000
+globalDefault: false
+description: "High priority class for MCP Memory Stack critical services"
+
+---
+# Priority Class for medium-priority workloads
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: mcp-medium-priority
+  labels:
+    app.kubernetes.io/name: mcp-memory-stack
+    app.kubernetes.io/component: scheduling
+value: 500
+globalDefault: false
+description: "Medium priority class for MCP Memory Stack standard services"
+
+---
+# Horizontal Pod Autoscaler for NGINX Ingress Controller
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: nginx-ingress-hpa
+  namespace: mcp-memory-stack
+  labels:
+    app.kubernetes.io/name: nginx-ingress
+    app.kubernetes.io/component: autoscaling
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: nginx-ingress-controller
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 50
+          periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 30
+        - type: Pods
+          value: 2
+          periodSeconds: 30

@@ -1,13 +1,75 @@
 /* global setImmediate */
 import { createRequire } from 'module';
+import type { Request, Response, NextFunction } from 'express';
 
 import { register, Counter, Histogram, Gauge, collectDefaultMetrics } from 'prom-client';
 
 const require = createRequire(import.meta.url);
 const os = require('os');
 
+interface MetricsMetadata {
+  type?: string;
+  userId?: string;
+  source?: string;
+}
+
+interface SystemLoadAverage {
+  0: number;
+  1: number;
+  2: number;
+}
+
+interface CpuUsage {
+  user: number;
+  system: number;
+}
+
 // Enhanced metrics service following 2025 standards
 class EnhancedMetricsService {
+  // Business Logic Metrics
+  public memoryOperations: Counter<string>;
+  public memoryOperationDuration: Histogram<string>;
+  public embeddingOperations: Counter<string>;
+  public embeddingDuration: Histogram<string>;
+  public searchOperations: Counter<string>;
+  public searchDuration: Histogram<string>;
+  public searchResultCount: Histogram<string>;
+
+  // Performance Metrics
+  public httpRequests: Counter<string>;
+  public httpDuration: Histogram<string>;
+  public httpRequestSize: Histogram<string>;
+  public httpResponseSize: Histogram<string>;
+  public mcpMessages: Counter<string>;
+  public mcpMessageDuration: Histogram<string>;
+
+  // Security Metrics
+  public authAttempts: Counter<string>;
+  public authDuration: Histogram<string>;
+  public rateLimitHits: Counter<string>;
+  public securityEvents: Counter<string>;
+
+  // Infrastructure Metrics
+  public dbConnections: Gauge<string>;
+  public dbQueries: Counter<string>;
+  public dbQueryDuration: Histogram<string>;
+  public dbConnectionPool: Gauge<string>;
+  public cacheOperations: Counter<string>;
+  public cacheDuration: Histogram<string>;
+  public cacheSize: Gauge<string>;
+  public cacheEntries: Gauge<string>;
+
+  // OpenTelemetry Metrics
+  public spanDuration: Histogram<string>;
+  public traceCount: Counter<string>;
+  public errorCount: Counter<string>;
+
+  // System Metrics
+  public cpuUsageGauge?: Gauge<string>;
+  public eventLoopLag?: Gauge<string>;
+  public loadAverage?: Gauge<string>;
+  public memoryCount?: Gauge<string>;
+
   constructor() {
     // Clear any existing metrics
     register.clear();
@@ -38,7 +100,7 @@ class EnhancedMetricsService {
     this.startEnhancedSystemMetrics();
   }
 
-  initBusinessMetrics() {
+  initBusinessMetrics(): void {
     // Memory operations with detailed labels
     this.memoryOperations = new Counter({
       name: 'mcp_memory_operations_total',
@@ -96,7 +158,7 @@ class EnhancedMetricsService {
     });
   }
 
-  initPerformanceMetrics() {
+  initPerformanceMetrics(): void {
     // HTTP metrics with enhanced labels
     this.httpRequests = new Counter({
       name: 'mcp_http_requests_total',
@@ -146,7 +208,7 @@ class EnhancedMetricsService {
     });
   }
 
-  initSecurityMetrics() {
+  initSecurityMetrics(): void {
     // Authentication metrics
     this.authAttempts = new Counter({
       name: 'mcp_auth_attempts_total',
@@ -180,7 +242,7 @@ class EnhancedMetricsService {
     });
   }
 
-  initInfrastructureMetrics() {
+  initInfrastructureMetrics(): void {
     // Database metrics with connection pooling
     this.dbConnections = new Gauge({
       name: 'mcp_db_connections_active',
@@ -242,7 +304,7 @@ class EnhancedMetricsService {
     });
   }
 
-  initOpenTelemetryMetrics() {
+  initOpenTelemetryMetrics(): void {
     // OpenTelemetry-compatible span metrics
     this.spanDuration = new Histogram({
       name: 'mcp_span_duration_seconds',
@@ -269,7 +331,7 @@ class EnhancedMetricsService {
     });
   }
 
-  startEnhancedSystemMetrics() {
+  startEnhancedSystemMetrics(): void {
     // Collect system metrics every 15 seconds
     setInterval(() => {
       this.collectSystemMetrics();
@@ -281,10 +343,10 @@ class EnhancedMetricsService {
     }, 30000);
   }
 
-  collectSystemMetrics() {
+  collectSystemMetrics(): void {
     try {
       // CPU usage
-      const cpuUsage = process.cpuUsage();
+      const cpuUsage: CpuUsage = process.cpuUsage();
       if (!this.cpuUsageGauge) {
         this.cpuUsageGauge = new Gauge({
           name: 'mcp_cpu_usage_microseconds_total',
@@ -312,7 +374,7 @@ class EnhancedMetricsService {
 
       // Load average (Unix-like systems)
       if (os.loadavg) {
-        const loadAvg = os.loadavg();
+        const loadAvg: SystemLoadAverage = os.loadavg();
         if (!this.loadAverage) {
           this.loadAverage = new Gauge({
             name: 'mcp_system_load_average',
@@ -330,7 +392,7 @@ class EnhancedMetricsService {
     }
   }
 
-  collectBusinessMetrics() {
+  collectBusinessMetrics(): void {
     // This would typically query the database for business metrics
     // For now, we'll just update some basic counters
     try {
@@ -353,7 +415,7 @@ class EnhancedMetricsService {
 
   // Express middleware with enhanced tracking
   middleware() {
-    return (req, res, next) => {
+    return (req: Request & { requestStartTime?: number; requestTotalTime?: number }, res: Response, next: NextFunction): void => {
       const start = process.hrtime.bigint();
       const startTime = Date.now(); // Request start timestamp for audit and timing metrics
 
@@ -364,7 +426,7 @@ class EnhancedMetricsService {
         const endTime = process.hrtime.bigint();
         const duration = Number(endTime - start) / 1000000000; // Convert to seconds
 
-        const route = req.route?.path || req.path || 'unknown';
+        const route = (req as any).route?.path || req.path || 'unknown';
         const { method } = req;
         const { statusCode } = res;
         const statusClass = `${Math.floor(statusCode / 100)}xx`;
@@ -379,7 +441,7 @@ class EnhancedMetricsService {
         this.httpRequests.inc({
           method,
           route,
-          status_code: statusCode,
+          status_code: statusCode.toString(),
           user_agent_type: userAgentType,
           content_type: contentType,
         });
@@ -417,7 +479,7 @@ class EnhancedMetricsService {
     };
   }
 
-  getUserAgentType(userAgent) {
+  getUserAgentType(userAgent?: string): string {
     if (!userAgent) return 'unknown';
 
     const ua = userAgent.toLowerCase();
@@ -433,11 +495,11 @@ class EnhancedMetricsService {
   }
 
   // Prometheus endpoint handler
-  async endpoint(req, res) {
+  async endpoint(req: Request, res: Response): Promise<void> {
     try {
       res.set('Content-Type', register.contentType);
-      const metrics = await register.metrics();
-      res.send(metrics);
+      const metricsOutput = await register.metrics();
+      res.send(metricsOutput);
     } catch (error) {
       console.error('Error generating metrics:', error);
       res.status(500).send('Error generating metrics');
@@ -446,7 +508,7 @@ class EnhancedMetricsService {
 
   // Enhanced tracking methods
 
-  trackMemoryOperation(operation, success, duration, metadata = {}) {
+  trackMemoryOperation(operation: string, success: boolean, duration?: number, metadata: MetricsMetadata = {}): void {
     this.memoryOperations.inc({
       operation,
       status: success ? 'success' : 'failure',
@@ -466,7 +528,7 @@ class EnhancedMetricsService {
     }
   }
 
-  trackEmbedding(model, dimensions, success, duration, cacheHit = false) {
+  trackEmbedding(model: string, dimensions: number, success: boolean, duration?: number, cacheHit: boolean = false): void {
     this.embeddingOperations.inc({
       model,
       status: success ? 'success' : 'failure',
@@ -485,7 +547,7 @@ class EnhancedMetricsService {
     }
   }
 
-  trackSearch(type, success, duration, resultCount, similarityThreshold) {
+  trackSearch(type: string, success: boolean, duration?: number, resultCount?: number, similarityThreshold?: number): void {
     this.searchOperations.inc({
       type,
       status: success ? 'success' : 'failure',
@@ -508,7 +570,7 @@ class EnhancedMetricsService {
     }
   }
 
-  trackDbQuery(operation, table, success, duration, prepared = false) {
+  trackDbQuery(operation: string, table: string, success: boolean, duration?: number, prepared: boolean = false): void {
     this.dbQueries.inc({
       operation,
       table,
@@ -521,7 +583,7 @@ class EnhancedMetricsService {
     }
   }
 
-  trackCache(operation, cacheType, hit, duration) {
+  trackCache(operation: string, cacheType: string, hit: boolean, duration?: number): void {
     this.cacheOperations.inc({
       operation,
       cache_type: cacheType,
@@ -533,7 +595,7 @@ class EnhancedMetricsService {
     }
   }
 
-  trackAuth(method, success, duration, userType = 'user', ipType = 'unknown') {
+  trackAuth(method: string, success: boolean, duration?: number, userType: string = 'user', ipType: string = 'unknown'): void {
     this.authAttempts.inc({
       method,
       status: success ? 'success' : 'failure',
@@ -552,7 +614,7 @@ class EnhancedMetricsService {
     }
   }
 
-  trackMcpMessage(type, method, success, duration) {
+  trackMcpMessage(type: string, method: string, success: boolean, duration?: number): void {
     this.mcpMessages.inc({
       type,
       method,
@@ -564,7 +626,7 @@ class EnhancedMetricsService {
     }
   }
 
-  trackSecurityEvent(eventType, severity, source) {
+  trackSecurityEvent(eventType: string, severity: string, source: string): void {
     this.securityEvents.inc({
       event_type: eventType,
       severity,
@@ -572,7 +634,7 @@ class EnhancedMetricsService {
     });
   }
 
-  trackError(errorType, serviceName, operation, severity = 'error') {
+  trackError(errorType: string, serviceName: string, operation: string, severity: string = 'error'): void {
     this.errorCount.inc({
       error_type: errorType,
       service_name: serviceName,
@@ -582,13 +644,13 @@ class EnhancedMetricsService {
   }
 
   // Gauge update methods
-  updateDbConnections(pool, activeCount, idleCount, totalCount) {
+  updateDbConnections(pool: string, activeCount: number, idleCount: number, totalCount: number): void {
     this.dbConnections.set({ pool, status: 'active' }, activeCount);
     this.dbConnections.set({ pool, status: 'idle' }, idleCount);
     this.dbConnections.set({ pool, status: 'total' }, totalCount);
   }
 
-  updateCacheSize(cacheType, sizeBytes, entryCount) {
+  updateCacheSize(cacheType: string, sizeBytes: number, entryCount: number): void {
     this.cacheSize.set({ cache_type: cacheType }, sizeBytes);
     this.cacheEntries.set({ cache_type: cacheType }, entryCount);
   }

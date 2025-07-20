@@ -281,6 +281,25 @@ docs(api): update OpenAPI specifications
 test(integration): add end-to-end migration tests
 ```
 
+#### Commit Message Guidelines
+
+**IMPORTANT**: AI Assistant commit messages must NOT include:
+
+- AI assistant signatures (e.g., "🤖 Generated with Claude Code")
+- Co-authored-by tags for AI assistants
+- Any AI assistant identification in commit messages
+
+**Acceptable commit format**:
+
+```
+type(scope): brief description
+
+Detailed explanation of changes if needed.
+- List specific modifications
+- Include relevant technical details
+- Reference issue numbers if applicable
+```
+
 ### Quality Gates
 
 #### Automated Checks
