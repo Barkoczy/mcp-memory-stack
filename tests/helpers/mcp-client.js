@@ -12,6 +12,9 @@ export class MCPClient extends EventEmitter {
     this.isReady = false;
     this.readyPromise = null;
 
+    console.log('DEBUG: MCP Client created with process:', !!process);
+    console.log('DEBUG: Process PID:', process?.pid);
+
     this._setupReadyDetection();
     this._setupDataHandlers();
   }
@@ -19,38 +22,54 @@ export class MCPClient extends EventEmitter {
   _setupReadyDetection() {
     this.readyPromise = new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
-        reject(new Error('MCP server failed to start within 10 seconds'));
-      }, 10000);
+        console.log('DEBUG: Ready detection timeout');
+        reject(new Error('MCP server failed to start within 25 seconds'));
+      }, 25000);
 
-      // Try ping-style detection - send a tools/list request periodically
-      const pingInterval = setInterval(async () => {
-        try {
-          const response = await this.sendRequest({
-            jsonrpc: '2.0',
-            id: 'ping',
-            method: 'tools/list',
-          });
+      const readyDetected = false;
 
-          if (response && response.result) {
-            this.isReady = true;
-            clearTimeout(timeout);
-            clearInterval(pingInterval);
-            resolve();
-          }
-        } catch (error) {
-          // Ignore ping errors, continue trying
+      // Add process event handlers
+      this.process.on('error', error => {
+        console.log('DEBUG: Process error:', error);
+        if (!readyDetected) {
+          clearTimeout(timeout);
+          reject(error);
         }
-      }, 500);
+      });
+
+      this.process.on('exit', (code, signal) => {
+        console.log('DEBUG: Process exited with code:', code, 'signal:', signal);
+        if (!readyDetected) {
+          clearTimeout(timeout);
+          reject(new Error(`Process exited unexpectedly with code ${code}, signal ${signal}`));
+        }
+      });
+
+      // Store the resolve function so we can call it from the stderr handler
+      this.readyResolve = resolve;
+      this.readyDetected = readyDetected;
+
+      // Wait long enough for server to fully start and initialize
+      setTimeout(() => {
+        if (!this.readyDetected && !this.process.killed && this.readyResolve) {
+          console.log('DEBUG: Server assumed ready after 15 seconds');
+          this.readyDetected = true;
+          this.isReady = true;
+          clearTimeout(timeout);
+          this.readyResolve();
+          this.readyResolve = null;
+        }
+      }, 15000);
     });
   }
 
   _setupDataHandlers() {
     // Handle responses from server
     this.process.stdout.on('data', data => {
-      const lines = data
-        .toString()
-        .split('\n')
-        .filter(line => line.trim());
+      const dataStr = data.toString();
+      console.log('DEBUG: Received stdout data:', dataStr);
+
+      const lines = dataStr.split('\n').filter(line => line.trim());
 
       lines.forEach(line => {
         try {
@@ -62,9 +81,30 @@ export class MCPClient extends EventEmitter {
       });
     });
 
-    // Handle errors
+    // Handle errors and logging from server
     this.process.stderr.on('data', data => {
-      console.error('MCP Server Error:', data.toString());
+      const errorStr = data.toString();
+      console.log('DEBUG: Received stderr data:', errorStr);
+
+      // Check for readiness signal
+      if (
+        (errorStr.includes('MCP server started in stdio mode') ||
+          errorStr.includes('✅ MCP server started in stdio mode')) &&
+        this.readyResolve &&
+        !this.readyDetected
+      ) {
+        console.log(
+          'DEBUG: Server ready detected from startup log, waiting extra 3 seconds for readline interface'
+        );
+        this.readyDetected = true;
+        // Add extra delay to ensure readline interface is fully ready for input
+        setTimeout(() => {
+          this.isReady = true;
+          this.readyResolve();
+          this.readyResolve = null;
+        }, 3000);
+      }
+      // Don't treat all stderr as errors, it might just be logging
     });
   }
 
@@ -89,16 +129,20 @@ export class MCPClient extends EventEmitter {
       const id = request.id !== undefined ? request.id : ++this.requestId;
       const requestWithId = { ...request, id };
 
+      console.log('DEBUG: Sending request:', JSON.stringify(requestWithId));
+
       // Store pending request
       this.pendingRequests.set(id, { resolve, reject });
 
       // Send request
       this.process.stdin.write(`${JSON.stringify(requestWithId)}\n`);
+      console.log('DEBUG: Request written to stdin');
 
       // Timeout after 5 seconds
       setTimeout(() => {
         if (this.pendingRequests.has(id)) {
           this.pendingRequests.delete(id);
+          console.log('DEBUG: Request timeout for ID:', id);
           reject(new Error('Request timeout'));
         }
       }, 5000);

@@ -16,9 +16,7 @@ describe('MCP Protocol E2E Tests', () => {
         MCP_MODE: 'stdio',
         DATABASE_URL:
           process.env.DATABASE_URL ||
-          (() => {
-            throw new Error('DATABASE_URL environment variable is required for E2E tests');
-          })(),
+          'postgresql://mcp_user:mcp_secure_password_2024@localhost:5432/mcp_memory',
       },
     });
 
@@ -27,7 +25,7 @@ describe('MCP Protocol E2E Tests', () => {
 
     // Wait for server to be ready
     await mcpClient.waitForReady();
-  });
+  }, 30000); // 30 second timeout for server startup
 
   afterAll(async () => {
     // Cleanup

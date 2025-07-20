@@ -1,5 +1,5 @@
 import js from '@eslint/js';
-import nodePlugin from 'eslint-plugin-node';
+import nodePlugin from 'eslint-plugin-n';
 import importPlugin from 'eslint-plugin-import';
 import promisePlugin from 'eslint-plugin-promise';
 import securityPlugin from 'eslint-plugin-security';
@@ -43,7 +43,7 @@ export default [
     },
 
     plugins: {
-      node: nodePlugin,
+      n: nodePlugin,
       import: importPlugin,
       promise: promisePlugin,
       security: securityPlugin,
@@ -132,14 +132,14 @@ export default [
       'security/detect-pseudoRandomBytes': 'error',
 
       // Node.js specific
-      'node/no-deprecated-api': 'error',
-      'node/no-missing-import': 'off', // Handled by import plugin
-      'node/no-unpublished-import': 'off',
-      'node/prefer-global/process': 'error',
-      'node/prefer-global/buffer': 'error',
-      'node/prefer-global/console': 'error',
-      'node/prefer-global/url': 'error',
-      'node/prefer-promises/fs': 'error',
+      'n/no-deprecated-api': 'error',
+      'n/no-missing-import': 'off', // Handled by import plugin
+      'n/no-unpublished-import': 'off',
+      'n/prefer-global/process': 'error',
+      'n/prefer-global/buffer': 'error',
+      'n/prefer-global/console': 'error',
+      'n/prefer-global/url': 'error',
+      'n/prefer-promises/fs': 'error',
     },
   },
 
@@ -180,7 +180,7 @@ export default [
     files: ['scripts/**/*.js'],
     rules: {
       'no-console': 'off',
-      'node/no-process-exit': 'off',
+      'n/no-process-exit': 'off',
       'security/detect-child-process': 'off',
     },
   },

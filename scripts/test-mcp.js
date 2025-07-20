@@ -5,12 +5,13 @@ import { spawn } from 'child_process';
 
 // Start MCP server process
 const mcpProcess = spawn('node', ['src/index.js'], {
+  stdio: 'pipe',
   env: {
     ...process.env,
     NODE_ENV: 'development',
-    MCP_MODE: 'true',
+    MCP_MODE: 'stdio',
     REST_API_ENABLED: 'false',
-    DATABASE_URL: 'postgresql://mcp_dev_user:dev_password_123@localhost:5432/mcp_memory_dev',
+    DATABASE_URL: 'postgresql://mcp_user:mcp_secure_password_2024@localhost:5432/mcp_memory',
     LOG_LEVEL: 'debug',
   },
 });
@@ -32,6 +33,23 @@ mcpProcess.stdout.on('data', data => {
 // Handle stderr
 mcpProcess.stderr.on('data', data => {
   console.error('Error:', data.toString());
+});
+
+// Handle process events
+mcpProcess.on('spawn', () => {
+  console.log('Process spawned successfully');
+});
+
+mcpProcess.on('error', error => {
+  console.error('Process error:', error);
+});
+
+mcpProcess.on('exit', (code, signal) => {
+  console.log('Process exited with code:', code, 'signal:', signal);
+});
+
+mcpProcess.on('close', (code, signal) => {
+  console.log('Process closed with code:', code, 'signal:', signal);
 });
 
 // Send initialize request
@@ -88,9 +106,15 @@ setTimeout(() => {
   mcpProcess.stdin.write(`${JSON.stringify(createRequest)}\n`);
 }, 3000);
 
+// Wait for responses before exiting
+setTimeout(() => {
+  console.log('\nWaiting for responses...');
+}, 4000);
+
 // Exit after tests
 setTimeout(() => {
   console.log('\nTests completed.');
+  mcpProcess.stdin.end(); // Properly close stdin
   mcpProcess.kill();
   process.exit(0);
-}, 5000);
+}, 6000);
