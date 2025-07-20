@@ -27,6 +27,11 @@ npm run test:coverage     # Generate coverage report
 # Test MCP protocol specifically
 npm run test:mcp
 npm run test:protocol
+
+# Additional test utilities
+npm run test:full         # Run comprehensive test suite
+npm run test:orchestrator # Advanced test orchestration
+npm run test:quick        # Quick smoke tests
 ```
 
 ### Code Quality
@@ -83,6 +88,12 @@ npm run test:setup
 
 # Health check the running system
 npm run health:check
+
+# Deployment and release management
+npm run deploy           # Deploy to production
+npm run release:prepare  # Prepare release artifacts
+npm run rollback         # Rollback deployment
+npm run docker:publish   # Publish Docker images
 ```
 
 ## Architecture Overview
